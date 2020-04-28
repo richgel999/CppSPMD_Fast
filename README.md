@@ -56,9 +56,13 @@ SPMD_WEND
 ```
 
 Other notes:
-Use store_all() when you know that you don't need lane masking, for example to stack temporaries if you know all lanes are active. Same for load_all().
+- Use store_all() when you know that you don't need lane masking, for example to stack temporaries or if you know all lanes must be active. Same for load_all().
 
-There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
+- If you're careful, you can use store_all() to temps in a SPMD_IF, and then regular store()'s in the SPMD_ELSE. The code in the if block is always evaluated first, before the else.
 
-Note: Vectorized vfloat sin(), cos(), log(), etc. have been removed for now, because I don't need this functionality for development. They will be added back soon.
+- Use SPMD_SIMPLE_IF if there is no SPMD control flow of any sort (other than other SPMD_SIMPLE_IF's) inside the conditional. This should lead to better code gen (less exec mask management). There are no checks for this, so you're on your own. If in doubt use SPMD_IF instead.
+
+- There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
+
+- Vectorized vfloat sin(), cos(), log(), etc. have been removed for now, because I don't need this functionality for development. They will be added back soon.
 
