@@ -57,3 +57,5 @@ Use store_all() when you know that you don't need lane masking, for example to s
 
 There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
 
+Note: Vectorized vfloat sin(), cos(), log(), etc. have been removed for now, because I don't need this functionality for development. They will be added back soon.
+
