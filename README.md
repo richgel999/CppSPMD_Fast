@@ -52,19 +52,27 @@ SPMD while loop (for loops are coming soon):
 ```
 // OK to use spmd_break(), spmd_continue(), spmd_return() inside while loop. OK to use SPMD_IF/SPMD_SIMPLE_IF inside while loop too.
 SPMD_WHILE(cond)
+{
+}
 SPMD_WEND
 ```
 
 Other notes:
+- Each SIMD ISA is a single self-contained header file. I plan on separating out some of the common SPMD conditional bits that are almost exactly the same between headers. (But, single header with no dependencies is so appealing, so maybe not.)
+
+- If you want to do an SPMD break on a conditional, it's more efficient to use spmd_if_break(cond); than an SPMD_IF and a separate call to spmd_break().
+
+- I just added loads/stores to pointers to vint and vfloat arrays, using vint indices. This isn't super well tested yet. I will be adding int16 and int8/uint8 support as well, through both varying and non-varying indices. (There's already a little bit of int16 load/store support already).
+
 - If you really care about good AVX1 performance, write your code using vfloat's vs. vint's. Even with AVX2, vfloat code seems to perform slightly faster in general. If you don't care about AVX1-only CPU's, then this can be ignored.
 
 - Benchmark your kernel using the AVX1 vs. AVX2 headers, and use the one with the best. perf. The best one to use may be surprising. 
 
 - The AVX2 header supports AVX1-only CPU's too, but it may be less efficient for int32 ops. The way the AVX1 vs. AVX2 headers implement int32 opts is different: The AVX1-only header uses two __m128i's for vint's and a single __m256 for vfloats, and the other uses a single __m256i for vint's).
 
-- SSE 4.1 supports float and int ops equally well.
+- SSE 4.1 supports float and int ops equally well in my benchmarking.
 
-- For performance: Don't use vint division or modulus operations. They are implemented in plain scalar code and are brutally slow.
+- For performance: Don't use vint division or modulus operations. They are implemented in plain scalar code and are quite slow.
 
 - Accessing vint or vfloat arrays (through vint/vfloat pointers) using store()/load()'s with *vint* indices is quite expensive (this is the slowest supported gather/scatter operation). ispc issues automatic warnings about these sorts of operations. Don't do it unless you mean it. 
 
