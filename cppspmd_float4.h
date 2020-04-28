@@ -964,7 +964,7 @@ struct spmd_kernel
 		CPPSPMD_FORCE_INLINE ~scoped_while_restorer() 
 		{ 
 #ifdef _DEBUG
-			m_pKernel->m_in_loop = false;
+			m_pKernel->m_in_loop = m_prev_in_loop;
 #endif
 			m_pKernel->m_internal_exec = m_orig_internal_exec;
 			m_pKernel->m_exec = m_pKernel->m_kernel_exec & m_pKernel->m_internal_exec;
