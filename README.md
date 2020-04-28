@@ -58,6 +58,8 @@ SPMD_WEND
 ```
 
 Other notes:
+- The float4 header is only for testing/debugging/porting use. It takes forever to compile in release and is quite slow (several times slower than just plain C code). Most of the demo's compilation time is spent on float4.
+
 - Each SIMD ISA is a single self-contained header file. I plan on separating out some of the common SPMD conditional bits that are almost exactly the same between headers. (But, single header with no dependencies is so appealing, so maybe not.)
 
 - If you want to do an SPMD break on a conditional, it's more efficient to use spmd_if_break(cond); than an SPMD_IF and a separate call to spmd_break().
