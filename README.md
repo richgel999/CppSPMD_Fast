@@ -82,3 +82,6 @@ Other notes:
 
 - Vectorized vfloat sin(), cos(), log(), etc. have been removed for now, because I don't need this functionality for development. They will be added back soon.
 
+- The example shows how the Mandelbrot example is compiled to multiple SIMD ISA's in a single executable, using macros and #include'ing the kernel multiple times for different ISA's. There is no automatic dispatch mechanism like ispc does, so you need to do this yourself if it's important. 
+
+- FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. If my kernels, it doesn't.
