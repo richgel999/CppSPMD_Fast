@@ -11,6 +11,8 @@ https://pastebin.com/xaACX3Th
 
 Macro control flow examples:
 
+"Simple" SPMD if or if/else statement:
+
 ```
 // Simpler/faster spmd_if's for when you know the SPMD control flow won't diverge inside the conditional
 // DO NOT use spmd_break(), spmd_continue(), spmd_return(), inside SPMD_SIMPLE_IF's. Nesting SPMD_SIMPLE_IF()'s is OK.
@@ -24,6 +26,8 @@ SPMD_SIMPLE_ELSE(cond)
 SPMD_SIMPLE_END_IF
 ```
 
+SPMD if or if/else statement:
+
 ```
 // OK to use spmd_break(), spmd_continue(), spmd_return(), SPMD_WHILE, SPMD_SIMPLE_IF, inside SPMD_IF's.
 SPMD_IF(cond)
@@ -34,6 +38,8 @@ SPMD_ELSE(cond)
 }
 SPMD_END_IF
 ```
+
+SPMD while loop (for loops are coming soon):
 
 ```
 // OK to use spmd_break(), spmd_continue(), spmd_return() inside while loop. OK to use SPMD_IF/SPMD_SIMPLE_IF inside while loop too.
