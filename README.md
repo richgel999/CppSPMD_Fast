@@ -5,17 +5,16 @@ This a development repo. It's incomplete and there are bound to be bugs in here.
 
 IMPORTANT: This code has *ONLY* been compiled with Visual Studio 2019 so far. It should compile with VS 2017 (I tested this earlier, but then I made some simple changes). The original CppSPMD code compiled with clang/gcc, but I've basically rewritten 90% of the code (although I kept its basic structure), so there will need to be fixes/changed for gcc/clang compilation.
 
-References
-
+References:
 [SPMD Programming In C++: CPPCon 2016](https://github.com/CppCon/CppCon2016/blob/master/Presentations/SPMD%20Programming%20Using%20C%2B%2B%20and%20ISPC/SPMD%20Programming%20Using%20C%2B%2B%20and%20ISPC%20-%20Nicolas%20Guillemot%20-%20CppCon%202016.pdf)
 
 [Original CppSPMD project](https://github.com/nlguillemot/CppSPMD)
 
 Here's a CppSPMD BC1 encoding example:
 https://pastebin.com/xaACX3Th
-(This is ONLY released as a CppSPMD example. This kernel has some quality bugs which I am currently fixing.)
+(This is ONLY released on pastebin.com as a CppSPMD example. This BC1 kernel has several quality-released bugs which I am currently fixing.)
 
-Macro control flow examples:
+Macro-based control flow examples (note that the original lambda-based control flow is still available):
 
 "Simple" SPMD if or if/else statement:
 
