@@ -47,3 +47,8 @@ SPMD_WHILE(cond)
 SPMD_WEND
 ```
 
+Other notes:
+Use store_all() when you know that you don't need lane masking, for example to stack temporaries if you know all lanes are active. Same for load_all().
+
+There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
+
