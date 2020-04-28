@@ -1210,6 +1210,9 @@ CPPSPMD_FORCE_INLINE vfloat round_truncate(const vfloat &a) { return vfloat{ _mm
 CPPSPMD_FORCE_INLINE vint max(const vint& a, const vint& b) { return vint{ _mm_max_epi32(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint min(const vint& a, const vint& b) {	return vint{ _mm_min_epi32(a.m_value, b.m_value) }; }
 
+CPPSPMD_FORCE_INLINE vint cast_vfloat_to_vint(const vfloat& v) { return vint{ _mm_castps_si128(v.m_value) }; }
+CPPSPMD_FORCE_INLINE vfloat cast_vint_to_vfloat(const vint& v) { return vfloat{ _mm_castsi128_ps(v.m_value) }; }
+
 CPPSPMD_FORCE_INLINE vfloat clamp(const vfloat& v, const vfloat& a, const vfloat& b)
 {
 	return vfloat{ _mm_min_ps(b.m_value, _mm_max_ps(v.m_value, a.m_value) ) };

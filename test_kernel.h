@@ -394,5 +394,32 @@ struct CPPSPMD_MAKE_NAME(test_kernel) : CPPSPMD::spmd_kernel
 		print_float_ptr(xxf, 32);
 		print_int_ptr(xxi, 32);
 
+		fprintf(pFile, "Casts:\n");
+		print_vint(cast_vfloat_to_vint(fa));
+		print_vfloat(cast_vint_to_vfloat(a));
+
+		print_vfloat(fa);
+		print_vfloat(cast_vint_to_vfloat(cast_vfloat_to_vint(fa)));
+		print_vint(b);
+		print_vint(cast_vfloat_to_vint(cast_vint_to_vfloat(b)));
+
+		fprintf(pFile, "Load all int:\n");
+		vint vii = 0;
+		print_vint(load_all(a[(const int *)av]));
+		print_vint(load_all(a[(int *)av]));
+
+		print_vint(load(a[(const int *)av]));
+		print_vint(load(a[(int *)av]));
+
+		fprintf(pFile, "Load all float:\n");
+		vfloat vif = 0;
+		
+		// load_all/load from const float * using varying indices isn't supported yet.
+		//print_vfloat(load_all(a[(const float *)fav]));
+		print_vfloat(load_all(a[(float *)fav]));
+
+		//print_vfloat(load(a[(const float *)fav]));
+		print_vfloat(load(a[(float *)fav]));
+
 	}
 };

@@ -940,13 +940,6 @@ struct spmd_kernel
 #else
 		CPPSPMD_ALIGN(32) int values[8];
 				
-#if 0
-		CPPSPMD_ALIGN(32) int indices[8];
-		_mm256_store_si256((__m256i *)indices, src.m_vindex);
-
-		for (int i = 0; i < 8; i++)
-			values[i] = src.m_pValue[indices[i]];
-#else
 		const int *pSrc = src.m_pValue;
 		values[0] = pSrc[_mm256_extract_epi32(src.m_vindex, 0)];
 		values[1] = pSrc[_mm256_extract_epi32(src.m_vindex, 1)];
@@ -956,9 +949,6 @@ struct spmd_kernel
 		values[5] = pSrc[_mm256_extract_epi32(src.m_vindex, 5)];
 		values[6] = pSrc[_mm256_extract_epi32(src.m_vindex, 6)];
 		values[7] = pSrc[_mm256_extract_epi32(src.m_vindex, 7)];
-
-		return vint{ _mm256_castps_si256( _mm256_load_ps((const float*)values)) };
-#endif
 
 		return vint{ _mm256_castps_si256( _mm256_load_ps((const float*)values)) };
 #endif
@@ -1559,6 +1549,10 @@ CPPSPMD_FORCE_INLINE vint min(const vint& a, const vint& b)
 	return vint{ combine_i(_mm_min_epi32(get_lo_i(a.m_value), get_lo_i(b.m_value)), _mm_min_epi32(get_hi_i(a.m_value), get_hi_i(b.m_value))) };
 #endif
 }
+
+CPPSPMD_FORCE_INLINE vint cast_vfloat_to_vint(const vfloat& v) { return vint{ _mm256_castps_si256(v.m_value) }; }
+
+CPPSPMD_FORCE_INLINE vfloat cast_vint_to_vfloat(const vint& v) { return vfloat{ _mm256_castsi256_ps(v.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vfloat clamp(const vfloat& v, const vfloat& a, const vfloat& b)
 {

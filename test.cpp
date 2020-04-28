@@ -52,7 +52,7 @@
 #include "test_kernel.h"
 #include "mandelbrot.h"
 
-// AVX2
+// AVX1
 #define CPPSPMD_USE_AVX2 0
 #undef CPPSPMD_USE_FMA
 #include "cppspmd_avx2.h"
@@ -64,7 +64,7 @@
 #include "test_kernel.h"
 #include "mandelbrot.h"
 
-// AVX1
+// AVX2
 #undef CPPSPMD_USE_AVX2
 #define CPPSPMD_USE_AVX2 1
 #undef CPPSPMD_USE_FMA

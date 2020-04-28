@@ -1183,6 +1183,9 @@ CPPSPMD_FORCE_INLINE vfloat round_truncate(const vfloat &a) { return vfloat{ tru
 CPPSPMD_FORCE_INLINE vint max(const vint& a, const vint& b) { return vint{ max_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint min(const vint& a, const vint& b) { return vint{ min_int4(a.m_value, b.m_value) }; }
 
+CPPSPMD_FORCE_INLINE vint cast_vfloat_to_vint(const vfloat& v) { return vint{ create_int4(CAST_F_TO_I(v.m_value.c[0]), CAST_F_TO_I(v.m_value.c[1]), CAST_F_TO_I(v.m_value.c[2]), CAST_F_TO_I(v.m_value.c[3])) }; }
+CPPSPMD_FORCE_INLINE vfloat cast_vint_to_vfloat(const vint & v) { return vfloat{ create_float4(CAST_I_TO_F(v.m_value.c[0]), CAST_I_TO_F(v.m_value.c[1]), CAST_I_TO_F(v.m_value.c[2]), CAST_I_TO_F(v.m_value.c[3])) }; }
+
 CPPSPMD_FORCE_INLINE vfloat clamp(const vfloat& v, const vfloat& a, const vfloat& b)
 {
 	return vfloat{ min_float4(b.m_value, max_float4(v.m_value, a.m_value)) };

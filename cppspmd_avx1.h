@@ -1385,6 +1385,18 @@ CPPSPMD_FORCE_INLINE vint min(const vint& a, const vint& b)
 	return vint{ _mm_min_epi32(a.m_value_l, b.m_value_l), _mm_min_epi32(a.m_value_h, b.m_value_h) };
 }
 
+CPPSPMD_FORCE_INLINE vint cast_vfloat_to_vint(const vfloat& v) 
+{ 
+	__m256i k = _mm256_castps_si256(v.m_value);
+	return vint{ get_lo_i(k), get_hi_i(k) }; 
+}
+
+CPPSPMD_FORCE_INLINE vfloat cast_vint_to_vfloat(const vint& v) 
+{ 
+	__m256i k = combine_i(v.m_value_l, v.m_value_h);
+	return vfloat{ _mm256_castsi256_ps(k) }; 
+}
+
 CPPSPMD_FORCE_INLINE vfloat clamp(const vfloat& v, const vfloat& a, const vfloat& b)
 {
 	return vfloat{ _mm256_min_ps(b.m_value, _mm256_max_ps(v.m_value, a.m_value) ) };
