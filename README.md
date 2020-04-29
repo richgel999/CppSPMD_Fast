@@ -102,3 +102,7 @@ Other notes:
 
 - FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. If my kernels, it doesn't.
 
+License
+=======
+
+See (LICENSE)[https://github.com/richgel999/CppSPMD_Fast/blob/master/LICENSE]
