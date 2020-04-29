@@ -6,6 +6,7 @@ This a development repo. The implementation is incomplete, it's a lot of brand n
 IMPORTANT: This code has *ONLY* been compiled with Visual Studio 2019 so far. It should compile with VS 2017 (I tested this earlier, but then I made some simple changes). The original CppSPMD code compiled with clang/gcc, but I've basically rewritten 90% of the code (although I kept its basic structure), so there will need to be fixes/changes for gcc/clang compilation.
 
 References:
+-----------
 
 [SPMD Programming In C++: CPPCon 2016](https://github.com/CppCon/CppCon2016/blob/master/Presentations/SPMD%20Programming%20Using%20C%2B%2B%20and%20ISPC/SPMD%20Programming%20Using%20C%2B%2B%20and%20ISPC%20-%20Nicolas%20Guillemot%20-%20CppCon%202016.pdf)
 
@@ -17,7 +18,10 @@ https://pastebin.com/xaACX3Th
 
 (This is ONLY released on pastebin.com as a CppSPMD example. This BC1 kernel has several quality-released bugs which I am currently fixing.)
 
-Macro-based control flow examples (note that the original lambda-based control flow is still available):
+Macro-based control flow examples:
+----------------------------------
+
+The original lambda-based control flow is still available, but in many cases results in less than optimal code generation. New code should prefer the macros:
 
 "Simple" SPMD if or if/else statement:
 
@@ -58,6 +62,8 @@ SPMD_WEND
 ```
 
 Other notes:
+------------
+
 - The float4 header is only for testing/debugging/porting use. It takes forever to compile in release and is quite slow (several times slower than just plain C code). Most of the demo's compilation time is spent on float4.
 
 - Each SIMD ISA is a single self-contained header file. I plan on separating out some of the common SPMD conditional bits that are almost exactly the same between headers. (But, single header with no dependencies is so appealing, so maybe not.)
@@ -95,3 +101,4 @@ Other notes:
 - The example shows how the Mandelbrot example is compiled to multiple SIMD ISA's in a single executable, using macros and #include'ing the kernel multiple times for different ISA's. There is no automatic dispatch mechanism like ispc does, so you need to do this yourself if it's important. 
 
 - FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. If my kernels, it doesn't.
+
