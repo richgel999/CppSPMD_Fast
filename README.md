@@ -105,4 +105,4 @@ Other notes:
 License
 =======
 
-See [LICENSE](https://github.com/richgel999/CppSPMD_Fast/blob/master/LICENSE)
+See [LICENSE](https://github.com/richgel999/CppSPMD_Fast/blob/master/LICENSE).
