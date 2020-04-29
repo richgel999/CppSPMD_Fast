@@ -104,6 +104,8 @@ Other notes:
 
 - Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. The example purposes lumps all the kernels (SSE4.1/AVX1/AVX2) into a single file, but the correct solution is to use seperate files/separate compiler settings.
 
+Also see Agner Fog's [dispatch example](https://github.com/tpn/agner/blob/master/vectorclass/dispatch_example.cpp).
+
 License
 =======
 
