@@ -102,7 +102,7 @@ Other notes:
 
 - FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. If my kernels, it doesn't.
 
-- Be aware that there are (AVX-VEX transition penalities)[https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf]. To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. The example purposes lumps all the kernels (SSE4.1/AVX1/AVX2) into a single file, but the correct solution is to use seperate files/separate compiler settings.
+- Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. The example purposes lumps all the kernels (SSE4.1/AVX1/AVX2) into a single file, but the correct solution is to use seperate files/separate compiler settings.
 
 License
 =======
