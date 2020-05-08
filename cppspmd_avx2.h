@@ -124,10 +124,20 @@ CPPSPMD_FORCE_INLINE __m128 get_hi(__m256 v) { return _mm256_extractf128_ps(v, 1
 CPPSPMD_FORCE_INLINE __m128i get_hi_i(__m256i v) { return _mm_castps_si128(_mm256_extractf128_ps(_mm256_castsi256_ps(v), 1)); }
 CPPSPMD_FORCE_INLINE __m128i get_hi_i(__m256 v) { return _mm_castps_si128(_mm256_extractf128_ps(v, 1)); }
 
+#if defined(__GNUC__)
+// _mm256_set_m128/_mm256_setr_m128 macro is not provided for gcc. So use a combination of _mm256_insertf128_ps and _mm256_castps128_ps256
+// https://github.com/opencv/opencv/pull/8080
+
+CPPSPMD_FORCE_INLINE __m256i combine_i(__m128 lo, __m128 hi) { return _mm256_castps_si256(_mm256_insertf128_ps(_mm256_castps128_ps256(lo), hi, 1)); }
+CPPSPMD_FORCE_INLINE __m256i combine_i(__m128i lo, __m128i hi) { return _mm256_castps_si256(_mm256_insertf128_ps(_mm256_castps128_ps256(_mm_castsi128_ps(lo)), _mm_castsi128_ps(hi), 1)); }
+CPPSPMD_FORCE_INLINE __m256 combine(__m128 lo, __m128 hi) { return _mm256_insertf128_ps(_mm256_castps128_ps256(lo), hi, 1); }
+CPPSPMD_FORCE_INLINE __m256 combine(__m128i lo, __m128i hi) { return _mm256_insertf128_ps(_mm256_castps128_ps256(_mm_castsi128_ps(lo)), _mm_castsi128_ps(hi), 1); }
+#else
 CPPSPMD_FORCE_INLINE __m256i combine_i(__m128 lo, __m128 hi) { return _mm256_castps_si256(_mm256_setr_m128(lo, hi)); }
 CPPSPMD_FORCE_INLINE __m256i combine_i(__m128i lo, __m128i hi) { return _mm256_setr_m128i(lo, hi); }
 CPPSPMD_FORCE_INLINE __m256 combine(__m128 lo, __m128 hi) { return _mm256_setr_m128(lo, hi); }
 CPPSPMD_FORCE_INLINE __m256 combine(__m128i lo, __m128i hi) { return _mm256_castsi256_ps(_mm256_setr_m128i(lo, hi)); }
+#endif
 
 CPPSPMD_FORCE_INLINE __m256i compare_gt_epi32(__m256i a, __m256i b)
 {
@@ -352,6 +362,7 @@ struct spmd_kernel
 	CPPSPMD_FORCE_INLINE const float_lref& store_all(const float_lref& dst, const vfloat& src)
 	{
 		_mm256_storeu_ps(dst.m_pValue, src.m_value);
+    return dst;
 	}
 
 	CPPSPMD_FORCE_INLINE const float_lref& store_all(const float_lref&& dst, const vfloat& src)
@@ -1787,7 +1798,11 @@ CPPSPMD_FORCE_INLINE vint vuint_shift_right(const vint& a, const vint& b)
 }
 
 CPPSPMD_FORCE_INLINE vint create_vint(__m256i v) { return vint{ v }; }
+#if defined(__GNUC__)
+CPPSPMD_FORCE_INLINE vint create_vint(__m128i lo, __m128i hi) { return vint{ _mm256_castps_si256(_mm256_insertf128_ps(_mm256_castps128_ps256(_mm_castsi128_ps(lo)), _mm_castsi128_ps(hi), 1)) }; }
+#else
 CPPSPMD_FORCE_INLINE vint create_vint(__m128i lo, __m128i hi) { return vint{ _mm256_setr_m128i(lo, hi) }; }
+#endif
 
 #undef VINT_SHIFT_LEFT
 #undef VINT_SHIFT_RIGHT

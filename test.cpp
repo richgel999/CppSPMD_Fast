@@ -27,12 +27,16 @@
    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#ifdef _WIN32
 #define _CRT_SECURE_NO_WARNINGS 1
+#endif
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <algorithm>
+#include <cstring>
+#include <memory>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN 1
@@ -219,7 +223,7 @@ inline void writePPM(int *buf, int width, int height, const char *fn) {
     for (int i = 0; i < width*height; ++i) {
         // Map the iteration count to colors by just alternating between
         // two greys.
-        char c = (buf[i] & 0x1) ? 240 : 20;
+        unsigned char c = (buf[i] & 0x1) ? 240 : 20;
         for (int j = 0; j < 3; ++j)
             fputc(c, fp);
     }
