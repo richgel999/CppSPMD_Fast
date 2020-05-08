@@ -51,7 +51,11 @@
 #endif
 
 #ifndef CPPSPMD_FORCE_INLINE
+  #if defined(_MSC_VER)
 	#define CPPSPMD_FORCE_INLINE __forceinline
+  #else
+	#define CPPSPMD_FORCE_INLINE inline
+  #endif 
 #endif
 
 #undef CPPSPMD
@@ -225,6 +229,7 @@ struct spmd_kernel
 	CPPSPMD_FORCE_INLINE const float_lref& store_all(const float_lref& dst, const vfloat& src)
 	{
 		_mm_storeu_ps(dst.m_pValue, src.m_value);
+		return dst;
 	}
 
 	CPPSPMD_FORCE_INLINE const float_lref& store_all(const float_lref&& dst, const vfloat& src)

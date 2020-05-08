@@ -63,7 +63,12 @@
 #endif
 
 #ifndef CPPSPMD_FORCE_INLINE
+  #if defined(_MSC_VER)
 	#define CPPSPMD_FORCE_INLINE __forceinline
+  #else
+  // TODO(syoyo): Compiler specific force inline
+	#define CPPSPMD_FORCE_INLINE inline
+  #endif 
 #endif
 
 #undef CPPSPMD
@@ -96,8 +101,12 @@ CPPSPMD_DECL(uint32_t, g_oneu_128[4]) = { 1, 1, 1, 1 };
 
 struct int4;
 
+#if defined(__clang__) || defined(__GNUC__)
+struct CPPSPMD_ALIGN(16) float4
+#else
 CPPSPMD_ALIGN(16)
 struct float4
+#endif
 {
 	float c[4];
 
@@ -108,8 +117,12 @@ struct float4
 	CPPSPMD_FORCE_INLINE float4& operator=(const float4 &a) { c[0] = a.c[0]; c[1] = a.c[1]; c[2] = a.c[2]; c[3] = a.c[3]; return *this; }
 };
 
+#if defined(__clang__) || defined(__GNUC__)
+struct CPPSPMD_ALIGN(16) int4
+#else
 CPPSPMD_ALIGN(16)
 struct int4
+#endif
 {
 	int32_t c[4];
 
