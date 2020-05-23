@@ -66,7 +66,7 @@ Other notes:
 
 - The float4 header is only for testing/debugging/porting use. It takes forever to compile in release and is quite slow (several times slower than just plain C code). Most of the demo's compilation time is spent on float4.
 
-- Each SIMD ISA is a single self-contained header file. I plan on separating out some of the common SPMD conditional bits that are almost exactly the same between headers. (But, single header with no dependencies is so appealing, so maybe not.)
+- Each SIMD ISA is a single self-contained header file. 
 
 - If you want to do an SPMD break on a conditional, it's more efficient to use spmd_if_break(cond); than an SPMD_IF and a separate call to spmd_break().
 
@@ -96,13 +96,9 @@ Other notes:
 
 - There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
 
-- Vectorized vfloat sin(), cos(), log(), etc. have been removed for now, because I don't need this functionality for development. They will be added back soon.
-
-- The example shows how the Mandelbrot example is compiled to multiple SIMD ISA's in a single executable, using macros and #include'ing the kernel multiple times for different ISA's. There is no automatic dispatch mechanism like ispc does, so you need to do this yourself if it's important. 
-
 - FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. If my kernels, it doesn't.
 
-- Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. The example purposes lumps all the kernels (SSE4.1/AVX1/AVX2) into a single file, but the correct solution is to use seperate files/separate compiler settings.
+- Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. 
 
 Also see Agner Fog's [dispatch example](https://github.com/tpn/agner/blob/master/vectorclass/dispatch_example.cpp).
 
