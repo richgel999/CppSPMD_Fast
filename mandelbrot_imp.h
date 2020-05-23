@@ -73,15 +73,15 @@ struct mandelbrot_kernel : spmd_kernel
 
 		for (int j = 0; j < height; j++) 
 		{
-			// Note that we'll be doing programCount computations in parallel,
-			// so increment i by that much.  This assumes that width evenly
-			// divides programCount.
+			// Note that we'll be doing PROGRAM_COUNT computations in parallel,
+			// so increment orig_index by that much.  This assumes that width evenly
+			// divides PROGRAM_COUNT.
 			SPMD_FOREACH(orig_index, 0, width)
 			{
 				// Figure out the position on the complex plane to compute the
 				// number of iterations at.  Note that the x values are
 				// different across different program instances, since its
-				// initializer incorporates the value of the programIndex
+				// initializer incorporates the value of the program_index
 				// variable.
 				vfloat x = x0 + orig_index * dx;
 				vfloat y = y0 + j * dy;
