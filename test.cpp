@@ -56,6 +56,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 // SSE2
 #undef CPPSPMD_NAME
@@ -65,6 +66,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 // SSE4.1
 #undef CPPSPMD_NAME
@@ -74,6 +76,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 #undef CPPSPMD_SSE41
 
@@ -85,6 +88,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 // AVX1 alt
 #undef CPPSPMD_NAME
@@ -94,6 +98,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 // AVX2 FMA
 #undef CPPSPMD_NAME
@@ -103,6 +108,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 // int16 AVX2 FMA
 #undef CPPSPMD_NAME
@@ -121,6 +127,7 @@
 #include "mandelbrot_declares.h"
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
+#include "volume_kernel_declares.h"
 
 #undef CPPSPMD_AVX512
 
@@ -959,14 +966,111 @@ int test_simple()
 }
 
 //------------------------------------------------------------------------------------------------
+// volume
+
+/* Load image and viewing parameters from a camera data file.
+   FIXME: we should add support to be able to specify viewing parameters
+   in the program here directly. */
+static void
+loadCamera(const char* fn, int* width, int* height, float raster2camera[4][4],
+	float camera2world[4][4]) {
+	FILE* f = fopen(fn, "r");
+	if (!f) {
+		perror(fn);
+		exit(1);
+	}
+	if (fscanf(f, "%d %d", width, height) != 2) {
+		fprintf(stderr, "Unexpected end of file in camera file\n");
+		exit(1);
+	}
+
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
+			if (fscanf(f, "%f", &raster2camera[i][j]) != 1) {
+				fprintf(stderr, "Unexpected end of file in camera file\n");
+				exit(1);
+			}
+		}
+	}
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
+			if (fscanf(f, "%f", &camera2world[i][j]) != 1) {
+				fprintf(stderr, "Unexpected end of file in camera file\n");
+				exit(1);
+			}
+		}
+	}
+	fclose(f);
+}
+
+/* Load a volume density file.  Expects the number of x, y, and z samples
+   as the first three values (as integer strings), then x*y*z
+   floating-point values (also as strings) to give the densities.  */
+static float*
+loadVolume(const char* fn, int n[3]) {
+	FILE* f = fopen(fn, "r");
+	if (!f) {
+		perror(fn);
+		exit(1);
+	}
+
+	if (fscanf(f, "%d %d %d", &n[0], &n[1], &n[2]) != 3) {
+		fprintf(stderr, "Couldn't find resolution at start of density file\n");
+		exit(1);
+	}
+
+	int count = n[0] * n[1] * n[2];
+	float* v = new float[count];
+	for (int i = 0; i < count; ++i) {
+		if (fscanf(f, "%f", &v[i]) != 1) {
+			fprintf(stderr, "Unexpected end of file at %d'th density value\n", i);
+			exit(1);
+		}
+	}
+
+	return v;
+}
+
+void test_volume()
+{
+	// Load viewing data and the volume density data
+	int width, height;
+	float raster2camera[4][4], camera2world[4][4];
+	loadCamera("volume_assets/camera.dat", &width, &height, raster2camera, camera2world);
+	float* image = new float[width * height];
+
+	int n[3];
+	float* density = loadVolume("volume_assets/density_highres.vol", n);
+
+	interval_timer tm;
+	tm.start();
+
+	cppspmd_volume_avx512(density, n, raster2camera, camera2world, width, height, image);
+	//cppspmd_volume_avx2_fma(density, n, raster2camera, camera2world, width, height, image);
+	//cppspmd_volume_sse41(density, n, raster2camera, camera2world, width, height, image);
+	//cppspmd_volume_sse2(density, n, raster2camera, camera2world, width, height, image);
+	//cppspmd_volume_avx1(density, n, raster2camera, camera2world, width, height, image);
+	//cppspmd_volume_avx1_alt(density, n, raster2camera, camera2world, width, height, image);
+	//cppspmd_volume_float4(density, n, raster2camera, camera2world, width, height, image);
+
+	printf("Elapsed: %3.6f\n", tm.get_elapsed_secs());
+		
+	writePPM(image, width, height, "volume.ppm");
+	
+	printf("Wrote volume.ppm\b");
+}
+
+//------------------------------------------------------------------------------------------------
 
 int main(int argc, char *arg_v[])
 {
 	test();
-
+		
 	test_simple();
 
 	test_rt();
+
+	test_volume();
 		
 	test_mandel();
 

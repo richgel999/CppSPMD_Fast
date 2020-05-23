@@ -107,5 +107,11 @@
     <ClInclude Include="simple_declares.h">
       <Filter>Source Files\kernels</Filter>
     </ClInclude>
+    <ClInclude Include="volume_kernel_declares.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="volume_kernel_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -27,3 +27,6 @@
 
 #include "simple_declares.h"
 #include "simple_imp.h"
+
+#include "volume_kernel_declares.h"
+#include "volume_kernel_imp.h"

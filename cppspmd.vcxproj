@@ -212,6 +212,8 @@
     <ClInclude Include="simple_imp.h" />
     <ClInclude Include="test_kernel_declares.h" />
     <ClInclude Include="test_kernel_imp.h" />
+    <ClInclude Include="volume_kernel_declares.h" />
+    <ClInclude Include="volume_kernel_imp.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
