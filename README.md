@@ -1,9 +1,9 @@
 # CppSPMD_Fast
-C++ SPMD test project: macro control flow, SSE4.1/AVX1/AVX2/AVX2 FMA support, lots of optimizations
+C++ SPMD test project: macro control flow, SSE4.1/AVX1/AVX2/AVX2 FMA/AVX-512 support, lots of optimizations
 
 This a development repo. The implementation is incomplete, it's a lot of brand new code so there are definitely going to be bugs in here, and I am refactoring the code to cut down on the amount of code duplication between the various headers. If you find it useful or interesting, that's wonderful, but please keep in mind this code is actively changing.
 
-IMPORTANT: This code has *ONLY* been compiled with Visual Studio 2019 so far. It should compile with VS 2017 (I tested this earlier, but then I made some simple changes). The original CppSPMD code compiled with clang/gcc, but I've basically rewritten 90% of the code (although I kept its basic structure), so there will need to be fixes/changes for gcc/clang compilation.
+IMPORTANT: This code has only been compiled with clang 9.0.0. Earlier versions were compiled with MSVC 2019, but once I added AVX-512 support I had to switch to clang because MSVC wasn't reliable (the compiler was crashing). Everything but AVX-512 should still compile with MSVC 2019, but I haven't verified this yet.
 
 References:
 -----------
@@ -28,14 +28,14 @@ The original lambda-based control flow is still available, but in many cases res
 ```
 // Simpler/faster spmd_if's for when you know the SPMD control flow won't diverge inside the conditional
 // DO NOT use spmd_break(), spmd_continue(), spmd_return(), inside SPMD_SIMPLE_IF's. Nesting SPMD_SIMPLE_IF()'s is OK.
-SPMD_SIMPLE_IF(cond)
+SPMD_SIF(cond)
 {
 }
 // DO NOT invert the conditional.
-SPMD_SIMPLE_ELSE(cond)
+SPMD_SELSE(cond)
 {
 }
-SPMD_SIMPLE_END_IF
+SPMD_SENDIF
 ```
 
 SPMD if or if/else statement:
