@@ -126,7 +126,7 @@ CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_if(const vbool& cond, const IfBody& 
 
 		ifBody();
 
-		// Propogate any lanes that got disabled inside the if body into the exec mask outside the if body, but turn on any lanes that didn't execute inside the if body.
+		// Propagate any lanes that got disabled inside the if body into the exec mask outside the if body, but turn on any lanes that didn't execute inside the if body.
 		m_exec = m_exec | unexecuted_lanes;
 
 		check_masks();
@@ -153,7 +153,7 @@ CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_ifelse(const vbool& cond, const IfBo
 
 			ifBody();
 
-			// Propogate any lanes that got disabled inside the if body into the exec mask outside the if body, but turn on any lanes that didn't execute inside the if body.
+			// Propagate any lanes that got disabled inside the if body into the exec mask outside the if body, but turn on any lanes that didn't execute inside the if body.
 			m_exec = m_exec | unexecuted_lanes;
 
 			check_masks();
@@ -171,7 +171,7 @@ CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_ifelse(const vbool& cond, const IfBo
 
 			ifBody();
 
-			// Propogate any lanes that got disabled inside the if body into the exec mask outside the if body, but turn on any lanes that didn't execute inside the if body.
+			// Propagate any lanes that got disabled inside the if body into the exec mask outside the if body, but turn on any lanes that didn't execute inside the if body.
 			m_exec = m_exec | unexecuted_lanes;
 
 			check_masks();
