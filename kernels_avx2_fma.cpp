@@ -33,3 +33,6 @@
 
 #include "noise_kernel_declares.h"
 #include "noise_kernel_imp.h"
+
+#include "options_imp.h"
+#include "options_declares.h"

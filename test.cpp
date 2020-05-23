@@ -58,10 +58,12 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
 
 // SSE2
 #undef CPPSPMD_NAME
 #define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _sse2)
+#define CPPSPMD_SSE2 1
 
 #include "test_kernel_declares.h"
 #include "mandelbrot_declares.h"
@@ -69,6 +71,8 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
+#undef CPPSPMD_SSE2
 
 // SSE4.1
 #undef CPPSPMD_NAME
@@ -80,6 +84,7 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
 
 #undef CPPSPMD_SSE41
 
@@ -93,6 +98,8 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
+#include "options_declares.h"
 
 // AVX1 alt
 #undef CPPSPMD_NAME
@@ -104,6 +111,8 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
+#include "options_declares.h"
 
 // AVX2 FMA
 #undef CPPSPMD_NAME
@@ -115,6 +124,7 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
 
 // int16 AVX2 FMA
 #undef CPPSPMD_NAME
@@ -135,6 +145,7 @@
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
+#include "options_declares.h"
 
 #undef CPPSPMD_AVX512
 
@@ -1098,11 +1109,177 @@ void test_noise()
 }
 
 //------------------------------------------------------------------------------------------------
+// Options
+
+#define BINOMIAL_NUM 64
+
+// Cumulative normal distribution function
+static inline float
+CND(float X) {
+    float L = fabsf(X);
+
+    float k = 1.f / (1.f + 0.2316419f * L);
+    float k2 = k*k;
+    float k3 = k2*k;
+    float k4 = k2*k2;
+    float k5 = k3*k2;
+
+    const float invSqrt2Pi = 0.39894228040f;
+    float w = (0.31938153f * k - 0.356563782f * k2 + 1.781477937f * k3 +
+               -1.821255978f * k4 + 1.330274429f * k5);
+    w *= invSqrt2Pi * expf(-L * L * .5f);
+
+    if (X > 0.f)
+        w = 1.f - w;
+    return w;
+}
+
+
+void
+black_scholes(float Sa[], float Xa[], float Ta[],
+              float ra[], float va[],
+              float result[], int count) {
+    for (int i = 0; i < count; ++i) {
+        float S = Sa[i], X = Xa[i];
+        float T = Ta[i], r = ra[i];
+        float v = va[i];
+
+        float d1 = (logf(S/X) + (r + v * v * .5f) * T) / (v * sqrtf(T));
+        float d2 = d1 - v * sqrtf(T);
+
+        result[i] = S * CND(d1) - X * expf(-r * T) * CND(d2);
+    }
+}
+
+
+void
+binomial_put(float Sa[], float Xa[], float Ta[],
+             float ra[], float va[],
+             float result[], int count) {
+    float V[BINOMIAL_NUM];
+
+    for (int i = 0; i < count; ++i) {
+        float S = Sa[i], X = Xa[i];
+        float T = Ta[i], r = ra[i];
+        float v = va[i];
+
+        float dt = T / BINOMIAL_NUM;
+        float u = expf(v * sqrtf(dt));
+        float d = 1.f / u;
+        float disc = expf(r * dt);
+        float Pu = (disc - d) / (u - d);
+
+        for (int j = 0; j < BINOMIAL_NUM; ++j) {
+            float upow = powf(u, (float)(2*j-BINOMIAL_NUM));
+            V[j] = std::max(0.f, X - S * upow);
+        }
+
+        for (int j = BINOMIAL_NUM-1; j >= 0; --j)
+            for (int k = 0; k < j; ++k)
+                V[k] = ((1 - Pu) * V[k] + Pu * V[k + 1]) / disc;
+
+        result[i] = V[0];
+    }
+}
+
+int test_options(bool scalar) 
+{
+	printf("Test options, scalar: %u\n", scalar);
+
+    int nOptions = 128*1024;
+
+    float *S = new float[nOptions];
+    float *X = new float[nOptions];
+    float *T = new float[nOptions];
+    float *r = new float[nOptions];
+    float *v = new float[nOptions];
+    float *result = new float[nOptions];
+		
+	// Note: I've modified this from the original sample, which set all inputs to the same values (why?).
+    for (int i = 0; i < nOptions; ++i) 
+	{
+		float f = (i / (float)nOptions);
+
+        S[i] = 100 + f * 50;  // stock price
+        X[i] = 98 + f * 10;   // option strike price
+        T[i] = 2 + f * 1;    // time (years)
+        r[i] = .02;  // risk-free interest rate
+        v[i] = 5;    // volatility
+    }
+
+    int num_runs = 10;
+
+    interval_timer tm;
+	tm.start();
+
+    // Binomial options pricing model
+    for (int i = 0; i < num_runs; i++)
+    {
+		if (scalar)
+			binomial_put(S, X, T, r, v, result, nOptions);
+		else
+		{
+			binomial_put_avx512(S, X, T, r, v, result, nOptions);
+			//binomial_put_float4(S, X, T, r, v, result, nOptions);
+		}
+    }
+		
+    printf("Binomial options:\n");
+    printf("%3.6f secs\n", tm.get_elapsed_secs());
+
+    FILE* binomial_csv = fopen(scalar ? "binomial_scalar.txt" : "binomial_simd.txt", "w");
+    for (int i = 0; binomial_csv && i < nOptions; i++)
+    {
+        fprintf(binomial_csv, "%f\n", result[i]);
+    }
+    fclose(binomial_csv);
+
+    num_runs = 10;
+
+    tm.start();
+
+    // Black-Scholes options pricing model
+    for (int i = 0; i < num_runs; i++)
+    {
+		if (scalar)
+			black_scholes(S, X, T, r, v, result, nOptions);
+		else
+		{
+			black_scholes_avx512(S, X, T, r, v, result, nOptions);
+			//black_scholes_float4(S, X, T, r, v, result, nOptions);
+		}
+    }
+		
+    printf("Black-Scholes:\n");
+    printf("%3.6f secs\n", tm.get_elapsed_secs());
+
+    FILE* black_scholes_csv = fopen(scalar ? "black_scholes_scalar.txt" : "black_scholes_simd.txt", "w");
+    for (int i = 0; black_scholes_csv && i < nOptions; i++)
+    {
+        fprintf(black_scholes_csv, "%f\n", result[i]);
+    }
+    fclose(black_scholes_csv);
+		
+	delete [] S;
+    delete [] X;
+    delete [] T;
+    delete [] r;
+    delete [] v;
+    delete [] result;
+
+	return 0;
+}
+
+//------------------------------------------------------------------------------------------------
 
 int main(int argc, char *arg_v[])
 {
 	test();
-		
+
+	test_options(false);
+	
+	test_options(true);
+				
 	test_simple();
 
 	test_rt();
@@ -1110,7 +1287,7 @@ int main(int argc, char *arg_v[])
 	test_volume();
 
 	test_noise();
-		
+				
 	test_mandel();
 
 	return EXIT_SUCCESS;

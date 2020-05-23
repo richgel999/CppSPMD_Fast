@@ -119,5 +119,11 @@
     <ClInclude Include="noise_kernel_imp.h">
       <Filter>Source Files\kernels</Filter>
     </ClInclude>
+    <ClInclude Include="options_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="options_declares.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
