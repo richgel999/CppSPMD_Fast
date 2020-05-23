@@ -57,6 +57,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 // SSE2
 #undef CPPSPMD_NAME
@@ -67,6 +68,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 // SSE4.1
 #undef CPPSPMD_NAME
@@ -77,6 +79,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 #undef CPPSPMD_SSE41
 
@@ -89,6 +92,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 // AVX1 alt
 #undef CPPSPMD_NAME
@@ -99,6 +103,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 // AVX2 FMA
 #undef CPPSPMD_NAME
@@ -109,6 +114,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 // int16 AVX2 FMA
 #undef CPPSPMD_NAME
@@ -128,6 +134,7 @@
 #include "rt_kernel_declares.h"
 #include "simple_declares.h"
 #include "volume_kernel_declares.h"
+#include "noise_kernel_declares.h"
 
 #undef CPPSPMD_AVX512
 
@@ -1061,6 +1068,36 @@ void test_volume()
 }
 
 //------------------------------------------------------------------------------------------------
+// noise
+
+void test_noise()
+{
+	unsigned int width = 768;
+	unsigned int height = 768;
+	float x0 = -10;
+	float x1 = 10;
+	float y0 = -10;
+	float y1 = 10;
+
+	float* buf = new float[width * height];
+
+	//
+	// Compute the image using the ispc implementation; report the minimum
+	// time of three runs.
+	//
+	noise_avx512(x0, y0, x1, y1, width, height, buf);
+	//noise_sse41(x0, y0, x1, y1, width, height, buf);
+	//noise_float4(x0, y0, x1, y1, width, height, buf);
+	//noise_avx2_fma(x0, y0, x1, y1, width, height, buf);
+	//noise_avx1(x0, y0, x1, y1, width, height, buf);
+	//noise_avx1_alt(x0, y0, x1, y1, width, height, buf);
+
+	writePPM(buf, width, height, "noise-cppspmd.ppm");
+
+	delete[] buf;
+}
+
+//------------------------------------------------------------------------------------------------
 
 int main(int argc, char *arg_v[])
 {
@@ -1071,6 +1108,8 @@ int main(int argc, char *arg_v[])
 	test_rt();
 
 	test_volume();
+
+	test_noise();
 		
 	test_mandel();
 

@@ -22,3 +22,6 @@
 
 #include "volume_kernel_declares.h"
 #include "volume_kernel_imp.h"
+
+#include "noise_kernel_declares.h"
+#include "noise_kernel_imp.h"

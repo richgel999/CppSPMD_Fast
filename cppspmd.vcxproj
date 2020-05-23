@@ -206,6 +206,8 @@
     <ClInclude Include="cppspmd_type_aliases.h" />
     <ClInclude Include="mandelbrot_declares.h" />
     <ClInclude Include="mandelbrot_imp.h" />
+    <ClInclude Include="noise_kernel_declares.h" />
+    <ClInclude Include="noise_kernel_imp.h" />
     <ClInclude Include="rt_kernel_declares.h" />
     <ClInclude Include="rt_kernel_imp.h" />
     <ClInclude Include="simple_declares.h" />
