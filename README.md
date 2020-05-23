@@ -1,5 +1,5 @@
 # CppSPMD_Fast
-C++ SPMD test project: macro control flow, SSE4.1/AVX1/AVX2/AVX2 FMA/AVX-512 support, lots of optimizations
+C++ SPMD test project: macro control flow, SSE2/SSE4.1/AVX1/AVX2/AVX2 FMA/AVX-512 support, lots of optimizations
 
 This a development repo. The implementation is incomplete, it's a lot of brand new code so there are definitely going to be bugs in here, and I am refactoring the code to cut down on the amount of code duplication between the various headers. If you find it useful or interesting, that's wonderful, but please keep in mind this code is actively changing.
 
