@@ -13,30 +13,99 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Source Files\cppspmd">
+      <UniqueIdentifier>{3c41db9e-f72b-4fde-8adc-d2040338f4c2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\kernels">
+      <UniqueIdentifier>{fb6918f3-bab4-48ba-aa79-c9517bd31c87}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="test.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="kernels_avx_512.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_avx1.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_avx1_alt.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_avx2_fma.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_float4.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_int16_avx2_fma.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_sse2.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
+    <ClCompile Include="kernels_sse41.cpp">
+      <Filter>Source Files\kernels</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cppspmd_avx1.h">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\cppspmd</Filter>
     </ClInclude>
     <ClInclude Include="cppspmd_avx2.h">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\cppspmd</Filter>
+    </ClInclude>
+    <ClInclude Include="cppspmd_avx512.h">
+      <Filter>Source Files\cppspmd</Filter>
     </ClInclude>
     <ClInclude Include="cppspmd_float4.h">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\cppspmd</Filter>
+    </ClInclude>
+    <ClInclude Include="cppspmd_flow.h">
+      <Filter>Source Files\cppspmd</Filter>
+    </ClInclude>
+    <ClInclude Include="cppspmd_int16_avx2_fma.h">
+      <Filter>Source Files\cppspmd</Filter>
+    </ClInclude>
+    <ClInclude Include="cppspmd_math.h">
+      <Filter>Source Files\cppspmd</Filter>
+    </ClInclude>
+    <ClInclude Include="cppspmd_math_declares.h">
+      <Filter>Source Files\cppspmd</Filter>
+    </ClInclude>
+    <ClInclude Include="cppspmd_sincos.h">
+      <Filter>Source Files\cppspmd</Filter>
     </ClInclude>
     <ClInclude Include="cppspmd_sse.h">
-      <Filter>Source Files</Filter>
+      <Filter>Source Files\cppspmd</Filter>
     </ClInclude>
-    <ClInclude Include="mandelbrot.h">
-      <Filter>Source Files</Filter>
+    <ClInclude Include="cppspmd_type_aliases.h">
+      <Filter>Source Files\cppspmd</Filter>
     </ClInclude>
-    <ClInclude Include="test_kernel.h">
-      <Filter>Source Files</Filter>
+    <ClInclude Include="test_kernel_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="test_kernel_declares.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="rt_kernel_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="rt_kernel_declares.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="mandelbrot_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="mandelbrot_declares.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="simple_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="simple_declares.h">
+      <Filter>Source Files\kernels</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 // test.cpp
+// Important: This test app requires AVX-512. It does not yet automatically dispatch.
 
 /*
   Copyright (c) 2010-2011, Intel Corporation
@@ -40,46 +41,88 @@
 #include <windows.h>
 #endif
 
-#define USE_AVX2 0
+#ifndef CPPSPMD_GLUER
+#define CPPSPMD_GLUER(a, b) a##b
+#endif
+#ifndef CPPSPMD_GLUER2
+#define CPPSPMD_GLUER2(a, b) CPPSPMD_GLUER(a, b)
+#endif
 
 // float4
-#include "cppspmd_float4.h"
-#include "test_kernel.h"
-#include "mandelbrot.h"
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _float4)
+
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
+
+// SSE2
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _sse2)
+
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
 
 // SSE4.1
-#include "cppspmd_sse.h"
-#include "test_kernel.h"
-#include "mandelbrot.h"
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _sse41)
+#define CPPSPMD_SSE41 1
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
+
+#undef CPPSPMD_SSE41
 
 // AVX1
-#define CPPSPMD_USE_AVX2 0
-#undef CPPSPMD_USE_FMA
-#include "cppspmd_avx2.h"
-#include "test_kernel.h"
-#include "mandelbrot.h"
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _avx1)
+
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
 
 // AVX1 alt
-#include "cppspmd_avx1.h"
-#include "test_kernel.h"
-#include "mandelbrot.h"
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _avx1_alt)
 
-// AVX2
-#undef CPPSPMD_USE_AVX2
-#define CPPSPMD_USE_AVX2 1
-#undef CPPSPMD_USE_FMA
-#include "cppspmd_avx2.h"
-#include "test_kernel.h"
-#include "mandelbrot.h"
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
 
 // AVX2 FMA
-#undef CPPSPMD_USE_AVX2
-#undef CPPSPMD_USE_FMA
-#define CPPSPMD_USE_AVX2 1
-#define CPPSPMD_USE_FMA 1
-#include "cppspmd_avx2.h"
-#include "test_kernel.h"
-#include "mandelbrot.h"
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _avx2_fma)
+
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
+
+// int16 AVX2 FMA
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _int16_avx2_fma)
+
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+
+// AVX-512
+#undef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, _avx512)
+#undef CPPSPMD_AVX512
+#define CPPSPMD_AVX512 1
+
+#include "test_kernel_declares.h"
+#include "mandelbrot_declares.h"
+#include "rt_kernel_declares.h"
+#include "simple_declares.h"
+
+#undef CPPSPMD_AVX512
 
 typedef uint64_t timer_ticks;
 
@@ -209,6 +252,8 @@ double interval_timer::ticks_to_secs(timer_ticks ticks)
 	return ticks * g_timer_freq;
 }
 
+//------------------------------------------------------------------------------------------------
+// Mandelbrot
 
 /* Write a PPM image file with the image of the Mandelbrot set */
 inline void writePPM(int *buf, int width, int height, const char *fn) {
@@ -219,7 +264,7 @@ inline void writePPM(int *buf, int width, int height, const char *fn) {
     for (int i = 0; i < width*height; ++i) {
         // Map the iteration count to colors by just alternating between
         // two greys.
-        char c = (buf[i] & 0x1) ? 240 : 20;
+        char c = (char)((buf[i] & 0x1) ? 240 : 20);
         for (int j = 0; j < 3; ++j)
             fputc(c, fp);
     }
@@ -293,7 +338,6 @@ int test_mandel()
 
 	int num_runs = 10;
 
-	double cheapest_run = 1e+10f;
 	interval_timer otm;
 
 	printf("test_mandel:\n");
@@ -302,56 +346,74 @@ int test_mandel()
 	for (uint32_t i = 0; i < 10; i++)
 	{
 		otm.start();
-		cppspmd_float4::spmd_call<mandelbrot_float4>(x0, y0, x1, y1, width, height, maxIterations, buf);
+		mandelbrot_float4(x0, y0, x1, y1, width, height, maxIterations, buf);
 		t = std::min<double>(t, otm.get_elapsed_secs()); 
 	}
 	printf("float4 time: %f\n", t);
 	writePPM(buf, width, height, "mandelbrot_float4.ppm");
 
 	t = 1e+10f;
-	for (uint32_t i = 0; i < 10; i++)
+	for (uint32_t i = 0; i < num_runs; i++)
 	{
 		otm.start();
-		cppspmd_avx1::spmd_call<mandelbrot_avx1>(x0, y0, x1, y1, width, height, maxIterations, buf);
+		mandelbrot_avx1(x0, y0, x1, y1, width, height, maxIterations, buf);
 		t = std::min<double>(t, otm.get_elapsed_secs()); 
 	}
 	printf("AVX1 time: %f\n", t);
 	writePPM(buf, width, height, "mandelbrot_AVX1.ppm");
 
 	t = 1e+10f;
-	for (uint32_t i = 0; i < 10; i++)
+	for (uint32_t i = 0; i < num_runs; i++)
 	{
 		otm.start();
-		cppspmd_avx1_alt::spmd_call<mandelbrot_avx1_alt>(x0, y0, x1, y1, width, height, maxIterations, buf);
+		mandelbrot_avx1_alt(x0, y0, x1, y1, width, height, maxIterations, buf);
 		t = std::min<double>(t, otm.get_elapsed_secs()); 
 	}
 	printf("AVX1 alt time: %f\n", t);
 	writePPM(buf, width, height, "mandelbrot_AVX1_alt.ppm");
 
 	t = 1e+10f;
-	for (uint32_t i = 0; i < 10; i++)
+	for (uint32_t i = 0; i < num_runs; i++)
 	{
 		otm.start();
-		cppspmd_sse41::spmd_call<mandelbrot_sse41>(x0, y0, x1, y1, width, height, maxIterations, buf);
+		mandelbrot_sse2(x0, y0, x1, y1, width, height, maxIterations, buf);
+		t = std::min<double>(t, otm.get_elapsed_secs()); 
+	}
+	printf("SSE2 time: %f\n", t);
+	writePPM(buf, width, height, "mandelbrot_SSE2.ppm");
+
+	t = 1e+10f;
+	for (uint32_t i = 0; i < num_runs; i++)
+	{
+		otm.start();
+		mandelbrot_sse41(x0, y0, x1, y1, width, height, maxIterations, buf);
 		t = std::min<double>(t, otm.get_elapsed_secs()); 
 	}
 	printf("SSE4.1 time: %f\n", t);
 	writePPM(buf, width, height, "mandelbrot_SSE41.ppm");
 
-#if USE_AVX2		
 	t = 1e+10f;
-	for (uint32_t i = 0; i < 10; i++)
+	for (uint32_t i = 0; i < num_runs; i++)
 	{
 		otm.start();
-		cppspmd_avx2::spmd_call<mandelbrot_avx2>(x0, y0, x1, y1, width, height, maxIterations, buf);
+		mandelbrot_avx2_fma(x0, y0, x1, y1, width, height, maxIterations, buf);
 		t = std::min<double>(t, otm.get_elapsed_secs()); 
 	}
 	printf("AVX2 time: %f\n", t);
 	writePPM(buf, width, height, "mandelbrot_AVX2.ppm");
-#endif
 
 	t = 1e+10f;
-	for (uint32_t i = 0; i < 10; i++)
+	for (uint32_t i = 0; i < num_runs; i++)
+	{
+		otm.start();
+		mandelbrot_avx512(x0, y0, x1, y1, width, height, maxIterations, buf);
+		t = std::min<double>(t, otm.get_elapsed_secs()); 
+	}
+	printf("AVX512 time: %f\n", t);
+	writePPM(buf, width, height, "mandelbrot_AVX512.ppm");
+
+	t = 1e+10f;
+	for (uint32_t i = 0; i < num_runs; i++)
 	{
 		otm.start();
 		mandelbrot_c(x0, y0, x1, y1,
@@ -365,52 +427,569 @@ int test_mandel()
 	return true;
 }
 
+//------------------------------------------------------------------------------------------------
+// Low-level test
+
 bool test()
 {
    FILE *pFile = fopen("float4.txt", "w");
 	if (!pFile) return false;
 	fprintf(pFile, "float4:\n");
-	cppspmd_float4::spmd_call<test_kernel_float4>(pFile);
+	cppspmd_lowlevel_test_float4(pFile);
 	fclose(pFile);
 	printf("Wrote file float4.txt\n");
 	
+	pFile = fopen("sse2.txt", "w");
+	if (!pFile) return false;
+	fprintf(pFile, "sse2:\n");
+	cppspmd_lowlevel_test_sse2(pFile);
+	fclose(pFile);
+	printf("Wrote file sse2.txt\n");
+
 	pFile = fopen("sse41.txt", "w");
 	if (!pFile) return false;
 	fprintf(pFile, "sse41:\n");
-	cppspmd_sse41::spmd_call<test_kernel_sse41>(pFile);
+	cppspmd_lowlevel_test_sse41(pFile);
 	fclose(pFile);
 	printf("Wrote file sse41.txt\n");
 
 	pFile = fopen("avx1_alt.txt", "w");
 	if (!pFile) return false;
 	fprintf(pFile, "avx1_alt:\n");
-	cppspmd_avx1_alt::spmd_call<test_kernel_avx1_alt>(pFile);
+	cppspmd_lowlevel_test_avx1_alt(pFile);
 	fclose(pFile);
 	printf("Wrote file avx1_alt.txt\n");
 
 	pFile = fopen("avx1.txt", "w");
 	if (!pFile) return false;
 	fprintf(pFile, "avx1:\n");
-	cppspmd_avx1::spmd_call<test_kernel_avx1>(pFile);
+	cppspmd_lowlevel_test_avx1(pFile);
 	fclose(pFile);
 	printf("Wrote file avx1.txt\n");
-
-#if USE_AVX2
-	pFile = fopen("avx2.txt", "w");
+		
+	pFile = fopen("avx2_fma.txt", "w");
 	if (!pFile) return false;
-	fprintf(pFile, "avx2:\n");
-	cppspmd_avx2::spmd_call<test_kernel_avx2>(pFile);
+	fprintf(pFile, "avx2_fma:\n");
+	cppspmd_lowlevel_test_avx2_fma(pFile);
 	fclose(pFile);
-	printf("Wrote file avx2.txt\n");
-#endif
+	printf("Wrote file avx2_fma.txt\n");
+
+	pFile = fopen("avx512.txt", "w");
+	if (!pFile) return false;
+	fprintf(pFile, "avx512:\n");
+	cppspmd_lowlevel_test_avx512(pFile);
+	fclose(pFile);
+	printf("Wrote file avx512.txt\n");
 
 	return true;
 }
+
+//------------------------------------------------------------------------------------------------
+// Ray trace test
+
+static void writeImage(int* idImage, float* depthImage, int width, int height, const char* filename) {
+	FILE* f = fopen(filename, "wb");
+	if (!f) {
+		perror(filename);
+		exit(1);
+	}
+
+	fprintf(f, "P6\n%d %d\n255\n", width, height);
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			// use the bits from the object id of the hit object to make a
+			// random color
+			int id = idImage[y * width + x];
+			unsigned char r = 0, g = 0, b = 0;
+
+			for (int i = 0; i < 8; ++i) {
+				// extract bit 3*i for red, 3*i+1 for green, 3*i+2 for blue
+				int rbit = (id & (1 << (3 * i))) >> (3 * i);
+				int gbit = (id & (1 << (3 * i + 1))) >> (3 * i + 1);
+				int bbit = (id & (1 << (3 * i + 2))) >> (3 * i + 2);
+				// and then set the bits of the colors starting from the
+				// high bits...
+				r |= rbit << (7 - i);
+				g |= gbit << (7 - i);
+				b |= bbit << (7 - i);
+			}
+			fputc(r, f);
+			fputc(g, f);
+			fputc(b, f);
+		}
+	}
+	fclose(f);
+	printf("Wrote image file %s\n", filename);
+}
+
+///--------------
+// Just enough of a float3 class to do what we need in this file.
+#ifdef _MSC_VER
+__declspec(align(16))
+#endif
+struct float3 {
+	float3() {}
+	float3(float xx, float yy, float zz) {
+		x = xx;
+		y = yy;
+		z = zz;
+	}
+
+	float3 operator*(float f) const { return float3(x * f, y * f, z * f); }
+	float3 operator-(const float3& f2) const { return float3(x - f2.x, y - f2.y, z - f2.z); }
+	float3 operator*(const float3& f2) const { return float3(x * f2.x, y * f2.y, z * f2.z); }
+	float x, y, z;
+	float pad; // match padding/alignment of ispc version
+}
+#ifndef _MSC_VER
+__attribute__((aligned(16)))
+#endif
+;
+
+struct Ray {
+	float3 origin, dir, invDir;
+	unsigned int dirIsNeg[3];
+	float mint, maxt;
+	int hitId;
+};
+
+#if 0
+// Declare these in a namespace so the mangling matches
+namespace ispc {
+	struct Triangle {
+		float p[3][4]; // extra float pad after each vertex
+		int32_t id;
+		int32_t pad[3]; // make 16 x 32-bits
+	};
+
+	struct LinearBVHNode {
+		float bounds[2][3];
+		int32_t offset; // primitives for leaf, second child for interior
+		uint8_t nPrimitives;
+		uint8_t splitAxis;
+		uint16_t pad;
+	};
+} // namespace ispc
+
+using namespace ispc;
+#endif
+
+inline float3 Cross(const float3& v1, const float3& v2) {
+	float v1x = v1.x, v1y = v1.y, v1z = v1.z;
+	float v2x = v2.x, v2y = v2.y, v2z = v2.z;
+	float3 ret;
+	ret.x = (v1y * v2z) - (v1z * v2y);
+	ret.y = (v1z * v2x) - (v1x * v2z);
+	ret.z = (v1x * v2y) - (v1y * v2x);
+	return ret;
+}
+
+inline float Dot(const float3& a, const float3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+
+static void generateRay(const float raster2camera[4][4], const float camera2world[4][4], float x, float y, Ray& ray) {
+	ray.mint = 0.f;
+	ray.maxt = 1e30f;
+
+	ray.hitId = 0;
+
+	// transform raster coordinate (x, y, 0) to camera space
+	float camx = raster2camera[0][0] * x + raster2camera[0][1] * y + raster2camera[0][3];
+	float camy = raster2camera[1][0] * x + raster2camera[1][1] * y + raster2camera[1][3];
+	float camz = raster2camera[2][3];
+	float camw = raster2camera[3][3];
+	camx /= camw;
+	camy /= camw;
+	camz /= camw;
+
+	ray.dir.x = camera2world[0][0] * camx + camera2world[0][1] * camy + camera2world[0][2] * camz;
+	ray.dir.y = camera2world[1][0] * camx + camera2world[1][1] * camy + camera2world[1][2] * camz;
+	ray.dir.z = camera2world[2][0] * camx + camera2world[2][1] * camy + camera2world[2][2] * camz;
+
+	ray.origin.x = camera2world[0][3] / camera2world[3][3];
+	ray.origin.y = camera2world[1][3] / camera2world[3][3];
+	ray.origin.z = camera2world[2][3] / camera2world[3][3];
+
+	ray.invDir.x = 1.f / ray.dir.x;
+	ray.invDir.y = 1.f / ray.dir.y;
+	ray.invDir.z = 1.f / ray.dir.z;
+
+	ray.dirIsNeg[0] = (ray.invDir.x < 0) ? 1 : 0;
+	ray.dirIsNeg[1] = (ray.invDir.y < 0) ? 1 : 0;
+	ray.dirIsNeg[2] = (ray.invDir.z < 0) ? 1 : 0;
+}
+
+static inline bool BBoxIntersect(const float bounds[2][3], const Ray& ray) {
+	float3 bounds0(bounds[0][0], bounds[0][1], bounds[0][2]);
+	float3 bounds1(bounds[1][0], bounds[1][1], bounds[1][2]);
+	float t0 = ray.mint, t1 = ray.maxt;
+
+	float3 tNear = (bounds0 - ray.origin) * ray.invDir;
+	float3 tFar = (bounds1 - ray.origin) * ray.invDir;
+	if (tNear.x > tFar.x) {
+		float tmp = tNear.x;
+		tNear.x = tFar.x;
+		tFar.x = tmp;
+	}
+	t0 = std::max(tNear.x, t0);
+	t1 = std::min(tFar.x, t1);
+
+	if (tNear.y > tFar.y) {
+		float tmp = tNear.y;
+		tNear.y = tFar.y;
+		tFar.y = tmp;
+	}
+	t0 = std::max(tNear.y, t0);
+	t1 = std::min(tFar.y, t1);
+
+	if (tNear.z > tFar.z) {
+		float tmp = tNear.z;
+		tNear.z = tFar.z;
+		tFar.z = tmp;
+	}
+	t0 = std::max(tNear.z, t0);
+	t1 = std::min(tFar.z, t1);
+
+	return (t0 <= t1);
+}
+
+inline bool TriIntersect(const Triangle& tri, Ray& ray) {
+	float3 p0(tri.p[0][0], tri.p[0][1], tri.p[0][2]);
+	float3 p1(tri.p[1][0], tri.p[1][1], tri.p[1][2]);
+	float3 p2(tri.p[2][0], tri.p[2][1], tri.p[2][2]);
+	float3 e1 = p1 - p0;
+	float3 e2 = p2 - p0;
+
+	float3 s1 = Cross(ray.dir, e2);
+	float divisor = Dot(s1, e1);
+
+	if (divisor == 0.)
+		return false;
+	float invDivisor = 1.f / divisor;
+
+	// Compute first barycentric coordinate
+	float3 d = ray.origin - p0;
+	float b1 = Dot(d, s1) * invDivisor;
+	if (b1 < 0. || b1 > 1.)
+		return false;
+
+	// Compute second barycentric coordinate
+	float3 s2 = Cross(d, e1);
+	float b2 = Dot(ray.dir, s2) * invDivisor;
+	if (b2 < 0. || b1 + b2 > 1.)
+		return false;
+
+	// Compute _t_ to intersection point
+	float t = Dot(e2, s2) * invDivisor;
+	if (t < ray.mint || t > ray.maxt)
+		return false;
+
+	ray.maxt = t;
+	ray.hitId = tri.id;
+	return true;
+}
+
+bool BVHIntersect(const LinearBVHNode nodes[], const Triangle tris[], Ray& r) {
+	Ray ray = r;
+	bool hit = false;
+	// Follow ray through BVH nodes to find primitive intersections
+	int todoOffset = 0, nodeNum = 0;
+	int todo[64];
+
+	while (true) {
+		// Check ray against BVH node
+		const LinearBVHNode& node = nodes[nodeNum];
+		if (BBoxIntersect(node.bounds, ray)) {
+			unsigned int nPrimitives = node.nPrimitives;
+			if (nPrimitives > 0) {
+				// Intersect ray with primitives in leaf BVH node
+				unsigned int primitivesOffset = node.offset;
+				for (unsigned int i = 0; i < nPrimitives; ++i) {
+					if (TriIntersect(tris[primitivesOffset + i], ray))
+						hit = true;
+				}
+				if (todoOffset == 0)
+					break;
+				nodeNum = todo[--todoOffset];
+			}
+			else {
+				// Put far BVH node on _todo_ stack, advance to near node
+				if (r.dirIsNeg[node.splitAxis]) {
+					todo[todoOffset++] = nodeNum + 1;
+					nodeNum = node.offset;
+				}
+				else {
+					todo[todoOffset++] = node.offset;
+					nodeNum = nodeNum + 1;
+				}
+			}
+		}
+		else {
+			if (todoOffset == 0)
+				break;
+			nodeNum = todo[--todoOffset];
+		}
+	}
+	r.maxt = ray.maxt;
+	r.hitId = ray.hitId;
+
+	return hit;
+}
+
+void raytrace_serial(int width, int height, int baseWidth, int baseHeight, const float raster2camera[4][4],
+	const float camera2world[4][4], float image[], int id[], const LinearBVHNode nodes[],
+	const Triangle triangles[]) {
+	float widthScale = float(baseWidth) / float(width);
+	float heightScale = float(baseHeight) / float(height);
+
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			Ray ray;
+			generateRay(raster2camera, camera2world, x * widthScale, y * heightScale, ray);
+			BVHIntersect(nodes, triangles, ray);
+
+			int offset = y * width + x;
+			image[offset] = ray.maxt;
+			id[offset] = ray.hitId;
+		}
+	}
+}
+
+//---------------
+
+int test_rt() 
+{
+	float scale = 1.f;
+	//const char* filename = "teapot";
+	const char* filename = "sponza";
+	//const char* filename = "cornell";
+
+#define READ(var, n)                                                                                                   \
+    if (fread(&(var), sizeof(var), n, f) != (unsigned int)n) {                                                         \
+        fprintf(stderr, "Unexpected EOF reading scene file\n");                                                        \
+        return 1;                                                                                                      \
+    } else /* eat ; */
+
+	//
+	// Read the camera specification information from the camera file
+	//
+	char fnbuf[1024];
+	sprintf(fnbuf, "%s.camera", filename);
+	FILE* f = fopen(fnbuf, "rb");
+	if (!f) {
+		perror(fnbuf);
+		return 1;
+	}
+
+	//
+	// Nothing fancy, and trouble if we run on a big-endian system, just
+	// fread in the bits
+	//
+	int baseWidth, baseHeight;
+	float camera2world[4][4], raster2camera[4][4];
+	READ(baseWidth, 1);
+	READ(baseHeight, 1);
+	READ(camera2world[0][0], 16);
+	READ(raster2camera[0][0], 16);
+
+	//
+	// Read in the serialized BVH
+	//
+	sprintf(fnbuf, "%s.bvh", filename);
+	f = fopen(fnbuf, "rb");
+	if (!f) {
+		perror(fnbuf);
+		return 1;
+	}
+
+	// The BVH file starts with an int that gives the total number of BVH
+	// nodes
+	uint32_t nNodes;
+	READ(nNodes, 1);
+
+	LinearBVHNode* nodes = new LinearBVHNode[nNodes];
+	for (unsigned int i = 0; i < nNodes; ++i) {
+		// Each node is 6x floats for a boox, then an integer for an offset
+		// to the second child node, then an integer that encodes the type
+		// of node, the total number of int it if a leaf node, etc.
+		float b[6];
+		READ(b[0], 6);
+		nodes[i].bounds[0][0] = b[0];
+		nodes[i].bounds[0][1] = b[1];
+		nodes[i].bounds[0][2] = b[2];
+		nodes[i].bounds[1][0] = b[3];
+		nodes[i].bounds[1][1] = b[4];
+		nodes[i].bounds[1][2] = b[5];
+		READ(nodes[i].offset, 1);
+		READ(nodes[i].nPrimitives, 1);
+		READ(nodes[i].splitAxis, 1);
+		READ(nodes[i].pad, 1);
+	}
+
+	// And then read the triangles
+	uint32_t nTris;
+	READ(nTris, 1);
+	Triangle* triangles = new Triangle[nTris];
+	for (uint32_t i = 0; i < nTris; ++i) {
+		// 9x floats for the 3 vertices
+		float v[9];
+		READ(v[0], 9);
+		float* vp = v;
+		for (int j = 0; j < 3; ++j) {
+			triangles[i].p[j][0] = *vp++;
+			triangles[i].p[j][1] = *vp++;
+			triangles[i].p[j][2] = *vp++;
+		}
+		// And create an object id
+		triangles[i].id = i + 1;
+	}
+	fclose(f);
+
+	int height = int(baseHeight * scale);
+	int width = int(baseWidth * scale);
+
+	// allocate images; one to hold hit object ids, one to hold depth to
+	// the first interseciton
+	int* id = new int[width * height];
+	float* image = new float[width * height];
+
+	interval_timer tm;
+	tm.start();
+
+#ifdef _DEBUG
+	const int T = 1;
+#else
+	const int T = 16;
+#endif
+
+	for (int i = 0; i < T; i++)
+	{
+#if 0
+		raytrace_serial(width, height, width, height, raster2camera, camera2world, image, id, nodes, triangles);
+#else
+		for (int y = 0; y < height; y += TILE_SIZE)
+		{
+			const int tile_height = std::min(TILE_SIZE, height - y);
+
+			for (int x = 0; x < width; x += TILE_SIZE)
+			{
+				const int tile_width = std::min(TILE_SIZE, width - x);
+
+				raytrace_tile_avx512(x, std::min(x + tile_width, width), y, std::min(y + tile_height, height), width, height, raster2camera, camera2world, image, id, nodes, triangles);
+				//raytrace_tile_avx2_fma(x, std::min(x + tile_width, width), y, std::min(y + tile_height, height), width, height, raster2camera, camera2world, image, id, nodes, triangles);
+				//raytrace_tile_avx1(x, std::min(x + tile_width, width), y, std::min(y + tile_height, height), width, height, raster2camera, camera2world, image, id, nodes, triangles);
+				//raytrace_tile_avx1_alt(x, std::min(x + tile_width, width), y, std::min(y + tile_height, height), width, height, raster2camera, camera2world, image, id, nodes, triangles);
+				//raytrace_tile_sse41(x, std::min(x + tile_width, width), y, std::min(y + tile_height, height), width, height, raster2camera, camera2world, image, id, nodes, triangles);
+				//raytrace_tile_sse2(x, std::min(x + tile_width, width), y, std::min(y + tile_height, height), width, height, raster2camera, camera2world, image, id, nodes, triangles);
+			}
+		}
+#endif
+	}
+
+	printf("Elapsed: %f\n", tm.get_elapsed_secs());
+
+	writeImage(id, image, width, height, "rt.ppm");
+
+	return 0;
+}
+
+//------------------------------------------------------------------------------------------------
+
+int test_simple() 
+{
+	printf("simple:\n");
+
+    float vin[16], vout[16];
+
+    // Initialize input buffer
+    for (int i = 0; i < 16; ++i)
+	{
+        vin[i] = (float)i;
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+    simple_float4(vin, vout, 16);
+
+	// Print results
+	printf("float4:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+        printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+    simple_sse41(vin, vout, 16);
+
+	// Print results
+	printf("SSE4.1:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+        printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+	simple_sse2(vin, vout, 16);
+
+    // Print results
+	printf("SSE2:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+        printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+	simple_avx2_fma(vin, vout, 16);
+
+    // Print results
+	printf("AVX2:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+        printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+	simple_avx1(vin, vout, 16);
+
+    // Print results
+	printf("AVX1:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+        printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+	simple_avx1_alt(vin, vout, 16);
+
+    // Print results
+	printf("AVX1_alt:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+        printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+	memset(vout, 0xDE, sizeof(vout));
+	simple_avx512(vin, vout, 16);
+
+    // Print results
+	printf("AVX512:\n");
+    for (int i = 0; i < 16; ++i)
+	{
+		printf("%d: simple(%f) = %f\n", i, vin[i], vout[i]);
+	}
+
+    return 0;
+}
+
+
+//------------------------------------------------------------------------------------------------
 
 int main(int argc, char *arg_v[])
 {
 	test();
 
+	test_simple();
+
+	test_rt();
+		
 	test_mandel();
 
 	return EXIT_SUCCESS;

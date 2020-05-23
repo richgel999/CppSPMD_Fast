@@ -20,33 +20,26 @@
 #include <utility>
 #include <algorithm>
 
-// Set to 1 to enable small but key x86 SSE helpers that work around run-time library slowness.
-#if defined(_M_X64) || defined(_M_IX86)
-	#define CPPSPMD_USE_SSE_INTRINSIC_HELPERS 1
-#endif
-
 // Set to 1 to use std::fmaf()
 #define CPPSPMD_USE_FMAF 0
-
-#if CPPSPMD_USE_SSE_INTRINSIC_HELPERS
-	#include <immintrin.h>
-#endif
 
 #undef CPPSPMD_SSE
 #undef CPPSPMD_AVX1
 #undef CPPSPMD_AVX2
 #undef CPPSPMD_AVX
 #undef CPPSPMD_FLOAT4
+#undef CPPSPMD_INT16
 
 #define CPPSPMD_SSE 0
 #define CPPSPMD_AVX 0
 #define CPPSPMD_AVX1 0
 #define CPPSPMD_AVX2 0
 #define CPPSPMD_FLOAT4 1
+#define CPPSPMD_INT16 0
 
 #ifdef _MSC_VER
 	#ifndef CPPSPMD_DECL
-		#define CPPSPMD_DECL(type, name) __declspec(align(32)) type name
+		#define CPPSPMD_DECL(type, name) __declspec(align(16)) type name
 	#endif
 
 	#ifndef CPPSPMD_ALIGN
@@ -63,7 +56,11 @@
 #endif
 
 #ifndef CPPSPMD_FORCE_INLINE
-	#define CPPSPMD_FORCE_INLINE __forceinline
+#ifdef _DEBUG
+#define CPPSPMD_FORCE_INLINE inline
+#else
+#define CPPSPMD_FORCE_INLINE __forceinline
+#endif
 #endif
 
 #undef CPPSPMD
@@ -80,9 +77,16 @@
 	#define CPPSPMD_GLUER2(a, b) CPPSPMD_GLUER(a, b)
 #endif
 
-#ifndef CPPSPMD_MAKE_NAME
-	#define CPPSPMD_MAKE_NAME(a) CPPSPMD_GLUER2(a, CPPSPMD_ARCH)
+#ifndef CPPSPMD_NAME
+#define CPPSPMD_NAME(a) CPPSPMD_GLUER2(a, CPPSPMD_ARCH)
 #endif
+
+#undef VASSERT
+#define VCOND(cond) ((exec_mask(vbool(cond)) & m_exec).get_movemask() == m_exec.get_movemask())
+#define VASSERT(cond) assert( VCOND(cond) )
+
+#undef CPPSPMD_ALIGNMENT
+#define CPPSPMD_ALIGNMENT (16)
 
 namespace CPPSPMD
 {
@@ -90,9 +94,12 @@ namespace CPPSPMD
 const int PROGRAM_COUNT_SHIFT = 2;
 const int PROGRAM_COUNT = 1 << PROGRAM_COUNT_SHIFT;
 
-CPPSPMD_DECL(uint32_t, g_allones_128[4]) = { UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX };
-CPPSPMD_DECL(float, g_onef_128[4]) = { 1.0f, 1.0f, 1.0f, 1.0f };
-CPPSPMD_DECL(uint32_t, g_oneu_128[4]) = { 1, 1, 1, 1 };
+template <typename N> inline N* aligned_new() { void* p = _mm_malloc(sizeof(N), 64); new (p) N;	return static_cast<N*>(p); }
+template <typename N> void aligned_delete(N* p) { if (p) { p->~N(); _mm_free(p); } }
+
+CPPSPMD_DECL(const uint32_t, g_allones_128[4]) = { UINT32_MAX, UINT32_MAX, UINT32_MAX, UINT32_MAX };
+CPPSPMD_DECL(const float, g_onef_128[4]) = { 1.0f, 1.0f, 1.0f, 1.0f };
+CPPSPMD_DECL(const uint32_t, g_oneu_128[4]) = { 1, 1, 1, 1 };
 
 struct int4;
 
@@ -136,21 +143,39 @@ CPPSPMD_FORCE_INLINE float maxf(float a, float b) { return a > b ? a : b; }
 CPPSPMD_FORCE_INLINE int mini(int a, int b) { return a < b ? a : b; }
 CPPSPMD_FORCE_INLINE int maxi(int a, int b) { return a > b ? a : b; }
 
+CPPSPMD_FORCE_INLINE int minu(int a, int b) { return (uint32_t)a < (uint32_t)b ? a : b; }
+CPPSPMD_FORCE_INLINE int maxu(int a, int b) { return (uint32_t)a > (uint32_t)b ? a : b; }
+
 #if CPPSPMD_USE_FMAF
 CPPSPMD_FORCE_INLINE float my_fmaf(float a, float b, float c) { return std::fmaf(a, b, c); }
 #else
 CPPSPMD_FORCE_INLINE float my_fmaf(float a, float b, float c) { return (a * b) + c; }
 #endif
 
-// Work around MSVC run-time library slowness.
-// std::roundf(): halfway casea re rounded away from zero, while with _mm_round_ss() it rounds halfway cases towards zero.
-#if CPPSPMD_USE_SSE_INTRINSIC_HELPERS
-CPPSPMD_FORCE_INLINE float my_roundf(float a) { __m128 k = _mm_load1_ps(&a); int r = _mm_extract_ps( _mm_round_ss(k, k,  _MM_FROUND_TO_NEAREST_INT |_MM_FROUND_NO_EXC), 0 ); return *(const float *)&r; }
-CPPSPMD_FORCE_INLINE float my_truncf(float a) { __m128 k = _mm_load1_ps(&a); int r = _mm_extract_ps( _mm_round_ss(k, k, _MM_FROUND_TO_ZERO |_MM_FROUND_NO_EXC), 0 ); return *(const float *)&r; }
-#else
-CPPSPMD_FORCE_INLINE float my_roundf(float a) { return std::roundf(a); }
+// Work around for std::roundf(): halfway cases rounded away from zero, while with _mm_round_ss() it rounds halfway cases towards zero.
+CPPSPMD_FORCE_INLINE float my_roundf(float a) 
+{ 
+	float f = std::roundf(a);
+	
+	// Are we exactly halfway?
+	if (fabs(a - f) == .5f)
+	{
+		int q = (int)f;
+		if (q & 1)
+		{
+			// Fix rounding so it's like _mm_round_ss().
+			f += ((a < 0.0f) ? 1.0f : -1.0f);
+			if ((a < 0.0f) && (f == 0.0f))
+			{
+				f = -0.0f;
+			}
+		}
+	}
+
+	return f;
+}
+
 CPPSPMD_FORCE_INLINE float my_truncf(float a) { return std::truncf(a); }
-#endif
 
 CPPSPMD_FORCE_INLINE float4 setzero_float4() { return float4(0.0f, 0.0f, 0.0f, 0.0f); }
 CPPSPMD_FORCE_INLINE float4 add_float4(const float4 &a, const float4 &b) { return float4(a.c[0] + b.c[0], a.c[1] + b.c[1], a.c[2] + b.c[2], a.c[3] + b.c[3]); }
@@ -188,36 +213,339 @@ CPPSPMD_FORCE_INLINE int4 setzero_int4() { return int4(0, 0, 0, 0); }
 CPPSPMD_FORCE_INLINE int4 add_int4(const int4 &a, const int4 &b) { return int4(a.c[0] + b.c[0], a.c[1] + b.c[1], a.c[2] + b.c[2], a.c[3] + b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 sub_int4(const int4 &a, const int4 &b) { return int4(a.c[0] - b.c[0], a.c[1] - b.c[1], a.c[2] - b.c[2], a.c[3] - b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 mul_int4(const int4 &a, const int4 &b) { return int4(a.c[0] * b.c[0], a.c[1] * b.c[1], a.c[2] * b.c[2], a.c[3] * b.c[3]); }
-CPPSPMD_FORCE_INLINE int4 div_int4(const int4 &a, const int4 &b) { return int4(b.c[0] ? (a.c[0] / b.c[0]) : 0, b.c[1] ? (a.c[1] / b.c[1]) : 0, b.c[2] ? (a.c[2] / b.c[2]) : 0, b.c[3] ? (a.c[3] / b.c[3]) : 0); }
-CPPSPMD_FORCE_INLINE int4 div_int4(const int4 &a, int b) { return b ? int4(a.c[0] / b, a.c[1] / b, a.c[2] / b, a.c[3] / b) : int4(0, 0, 0, 0); }
+CPPSPMD_FORCE_INLINE int4 div_int4(const int4 &a, const int4 &b) { return int4(b.c[0] ? (a.c[0] / b.c[0]) : INT_MIN, b.c[1] ? (a.c[1] / b.c[1]) : INT_MIN, b.c[2] ? (a.c[2] / b.c[2]) : INT_MIN, b.c[3] ? (a.c[3] / b.c[3]) : INT_MIN); }
+CPPSPMD_FORCE_INLINE int4 div_int4(const int4 &a, int b) { return b ? int4(a.c[0] / b, a.c[1] / b, a.c[2] / b, a.c[3] / b) : int4(INT_MIN, INT_MIN, INT_MIN, INT_MIN); }
 CPPSPMD_FORCE_INLINE int4 mod_int4(const int4 &a, const int4 &b) { return int4(b.c[0] ? (a.c[0] % b.c[0]) : 0, b.c[1] ? (a.c[1] % b.c[1]) : 0, b.c[2] ? (a.c[2] % b.c[2]) : 0, b.c[3] ? (a.c[3] % b.c[3]) : 0); }
 CPPSPMD_FORCE_INLINE int4 mod_int4(const int4 &a, int b) { return b ? int4(a.c[0] % b, a.c[1] % b, a.c[2] % b, a.c[3] % b) : int4(0, 0, 0, 0); }
 CPPSPMD_FORCE_INLINE int4 neg_int4(const int4 &a) { return int4(-a.c[0], -a.c[1], -a.c[2], -a.c[3]); }		
+CPPSPMD_FORCE_INLINE int4 inv_int4(const int4 &a) { return int4(~a.c[0], ~a.c[1], ~a.c[2], ~a.c[3]); }
 	
 CPPSPMD_FORCE_INLINE int4 and_int4(const int4 &a, const int4 &b) { return int4(a.c[0] & b.c[0], a.c[1] & b.c[1], a.c[2] & b.c[2], a.c[3] & b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 or_int4(const int4 &a, const int4 &b) { return int4(a.c[0] | b.c[0], a.c[1] | b.c[1], a.c[2] | b.c[2], a.c[3] | b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 xor_int4(const int4 &a, const int4 &b) { return int4(a.c[0] ^ b.c[0], a.c[1] ^ b.c[1], a.c[2] ^ b.c[2], a.c[3] ^ b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 andnot_int4(const int4 &a, const int4 &b) { return int4((~a.c[0]) & b.c[0], (~a.c[1]) & b.c[1], (~a.c[2]) & b.c[2], (~a.c[3]) & b.c[3]); }
-	
-CPPSPMD_FORCE_INLINE int4 shift_left_int4(const int4 &a, const int4 &b) { return int4(a.c[0] << b.c[0], a.c[1] << b.c[1], a.c[2] << b.c[2], a.c[3] << b.c[3]); }
-CPPSPMD_FORCE_INLINE int4 shift_right_int4(const int4 &a, const int4 &b) { return int4(a.c[0] >> b.c[0], a.c[1] >> b.c[1], a.c[2] >> b.c[2], a.c[3] >> b.c[3]); }
-CPPSPMD_FORCE_INLINE int4 unsigned_shift_right_int4(const int4 &a, const int4 &b) { return int4(((uint32_t)a.c[0]) >> b.c[0], ((uint32_t)a.c[1]) >> b.c[1], ((uint32_t)a.c[2]) >> b.c[2], ((uint32_t)a.c[3]) >> b.c[3]); }
 
-CPPSPMD_FORCE_INLINE int4 shift_left_int4(const int4 &a, int b) { return int4(a.c[0] << b, a.c[1] << b, a.c[2] << b, a.c[3] << b); }
-CPPSPMD_FORCE_INLINE int4 shift_right_int4(const int4 &a, int b) { return int4(a.c[0] >> b, a.c[1] >> b, a.c[2] >> b, a.c[3] >> b); }
-CPPSPMD_FORCE_INLINE int4 unsigned_shift_right_int4(const int4 &a, int b) { return int4(((uint32_t)a.c[0]) >> b, ((uint32_t)a.c[1]) >> b, ((uint32_t)a.c[2]) >> b, ((uint32_t)a.c[3]) >> b); }
+// C's shifts have undefined behavior, but SSE's doesn't, so we need to emulate.
+CPPSPMD_FORCE_INLINE int4 shift_left_int4(const int4 &a, const int4 &b) 
+{ 
+	return int4((b.c[0] > 31) ? 0 : (a.c[0] << b.c[0]), (b.c[1] > 31) ? 0 : (a.c[1] << b.c[1]), (b.c[2] > 31) ? 0 : (a.c[2] << b.c[2]), (b.c[3] > 31) ? 0 : (a.c[3] << b.c[3])); 
+}
+
+CPPSPMD_FORCE_INLINE int4 shift_right_int4(const int4 &a, const int4 &b) 
+{ 
+	return int4(a.c[0] >> std::min(31, b.c[0]), a.c[1] >> std::min(31, b.c[1]), a.c[2] >> std::min(31, b.c[2]), a.c[3] >> std::min(31, b.c[3])); 
+}
+
+CPPSPMD_FORCE_INLINE int4 unsigned_shift_right_int4(const int4 &a, const int4 &b) 
+{ 
+	return int4( (b.c[0] > 31) ? 0 : ((uint32_t)a.c[0]) >> b.c[0], (b.c[1] > 31) ? 0 : ((uint32_t)a.c[1]) >> b.c[1], (b.c[2] > 31) ? 0 : ((uint32_t)a.c[2]) >> b.c[2], (b.c[3] > 31) ? 0 : ((uint32_t)a.c[3]) >> b.c[3]);
+}
+
+CPPSPMD_FORCE_INLINE int4 shift_left_int4(const int4 &a, int b) 
+{ 
+	if (b > 31)
+		return int4(0, 0, 0, 0);
+	else
+		return int4(a.c[0] << b, a.c[1] << b, a.c[2] << b, a.c[3] << b); 
+}
+
+CPPSPMD_FORCE_INLINE int4 shift_right_int4(const int4 &a, int b) 
+{ 
+	b = std::min(b, 31);
+	return int4(a.c[0] >> b, a.c[1] >> b, a.c[2] >> b, a.c[3] >> b); 
+}
+
+CPPSPMD_FORCE_INLINE int4 unsigned_shift_right_int4(const int4 &a, int b) 
+{ 
+	if (b > 31)
+		return int4(0, 0, 0, 0);
+	else
+		return int4(((uint32_t)a.c[0]) >> b, ((uint32_t)a.c[1]) >> b, ((uint32_t)a.c[2]) >> b, ((uint32_t)a.c[3]) >> b); 
+}
 
 CPPSPMD_FORCE_INLINE int4 cmp_eq_int4(const int4 &a, const int4 &b) { return int4(-(a.c[0] == b.c[0]), -(a.c[1] == b.c[1]), -(a.c[2] == b.c[2]), -(a.c[3] == b.c[3])); }
 CPPSPMD_FORCE_INLINE int4 cmp_gt_int4(const int4 &a, const int4 &b) { return int4(-(a.c[0] > b.c[0]), -(a.c[1] > b.c[1]), -(a.c[2] > b.c[2]), -(a.c[3] > b.c[3])); }
 
-CPPSPMD_FORCE_INLINE int get_movemask_int4(const int4 &a) {	assert((a.c[0] == 0) || (a.c[0] == UINT32_MAX)); assert((a.c[1] == 0) || (a.c[1] == UINT32_MAX)); assert((a.c[2] == 0) || (a.c[2] == UINT32_MAX));	assert((a.c[3] == 0) || (a.c[3] == UINT32_MAX));	return (a.c[0] & 1) | (a.c[1] & 2) | (a.c[2] & 4) | (a.c[3] & 8); }
+CPPSPMD_FORCE_INLINE int movemask_int4(const int4 &a) 
+{	
+	return ((a.c[0] >> 31) & 1) | (((a.c[1] >> 31) & 1) << 1)| (((a.c[2] >> 31) & 1) << 2)| (((a.c[3] >> 31) & 1) << 3); 
+}
 
 CPPSPMD_FORCE_INLINE int4 min_int4(const int4 &a, const int4 &b) { return int4(mini(a.c[0], b.c[0]), mini(a.c[1], b.c[1]), mini(a.c[2], b.c[2]), mini(a.c[3], b.c[3])); }
 CPPSPMD_FORCE_INLINE int4 max_int4(const int4 &a, const int4 &b) { return int4(maxi(a.c[0], b.c[0]), maxi(a.c[1], b.c[1]), maxi(a.c[2], b.c[2]), maxi(a.c[3], b.c[3])); }
 
-CPPSPMD_FORCE_INLINE int4 blend_int4(const int4 &a, const int4 &b, const int4 &c) { return int4( (b.c[0] & c.c[0]) | (a.c[0] & (~c.c[0])), (b.c[1] & c.c[1]) | (a.c[1] & (~c.c[1])), (b.c[2] & c.c[2]) | (a.c[2] & (~c.c[2])), (b.c[3] & c.c[3]) | (a.c[3] & (~c.c[3])) ); }
-CPPSPMD_FORCE_INLINE float4 blend_float4(const float4 &a, const float4 &b, const float4 &c) { return cast_int4_to_float4(blend_int4(cast_float4_to_int4(a), cast_float4_to_int4(b), cast_float4_to_int4(c))); }
-CPPSPMD_FORCE_INLINE float4 blend_float4(const float4 &a, const float4 &b, const int4 &c) { return cast_int4_to_float4(blend_int4(cast_float4_to_int4(a), cast_float4_to_int4(b), c)); }
+CPPSPMD_FORCE_INLINE int4 min_uint4(const int4& a, const int4& b) { return int4(minu(a.c[0], b.c[0]), minu(a.c[1], b.c[1]), minu(a.c[2], b.c[2]), minu(a.c[3], b.c[3])); }
+CPPSPMD_FORCE_INLINE int4 max_uint4(const int4& a, const int4& b) { return int4(maxu(a.c[0], b.c[0]), maxu(a.c[1], b.c[1]), maxu(a.c[2], b.c[2]), maxu(a.c[3], b.c[3])); }
+
+CPPSPMD_FORCE_INLINE int4 abs_int4(const int4 &a) { return int4(::abs(a.c[0]), ::abs(a.c[1]), ::abs(a.c[2]), ::abs(a.c[3])); }
+
+CPPSPMD_FORCE_INLINE uint32_t byteswap_uint32(uint32_t v) { uint32_t b0 = v & 0xFF; uint32_t b1 = (v >> 8U) & 0xFF; uint32_t b2 = (v >> 16U) & 0xFF; uint32_t b3 = (v >> 24U) & 0xFF; return b3 | (b2 << 8) | (b1 << 16) | (b0 << 24); }
+CPPSPMD_FORCE_INLINE int4 byteswap_int4(const int4& a) { return int4(byteswap_uint32(a.c[0]), byteswap_uint32(a.c[1]), byteswap_uint32(a.c[2]), byteswap_uint32(a.c[3])); }
+
+CPPSPMD_FORCE_INLINE int4 blendv_int4(const int4 &a, const int4 &b, const int4 &c) 
+{ 
+	const int m0 = c.c[0] >> 31, m1 = c.c[1] >> 31, m2 = c.c[2] >> 31, m3 = c.c[3] >> 31;
+	//return int4( (b.c[0] & c.c[0]) | (a.c[0] & (~c.c[0])), (b.c[1] & c.c[1]) | (a.c[1] & (~c.c[1])), (b.c[2] & c.c[2]) | (a.c[2] & (~c.c[2])), (b.c[3] & c.c[3]) | (a.c[3] & (~c.c[3])) ); 
+	return int4( (b.c[0] & m0) | (a.c[0] & (~m0)), (b.c[1] & m1) | (a.c[1] & (~m1)), (b.c[2] & m2) | (a.c[2] & (~m2)), (b.c[3] & m3) | (a.c[3] & (~m3)) ); 
+}
+
+CPPSPMD_FORCE_INLINE int4 blendv_epi8_int4(const int4 &a, const int4 &b, const int4 &c) 
+{ 
+	int4 r;
+	for (int i = 0; i < 16; i++)
+	{
+		uint8_t ab = ((const uint8_t *)&a)[i];
+		uint8_t bb = ((const uint8_t *)&b)[i];
+		uint8_t mask = (((const int8_t *)&c)[i]) >> 7;
+		((uint8_t *)&r)[i] = (bb & mask) | (ab & (~mask));
+	}
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int clamp32(int a, int lo, int hi) { return std::max(lo, std::min(a, hi)); }
+CPPSPMD_FORCE_INLINE int saturate_i8_32(int a) { return std::max(-128, std::min(a, 127)); }
+CPPSPMD_FORCE_INLINE int clamp_lo_u8_32(int a) { return std::max(a, 0); }
+CPPSPMD_FORCE_INLINE int clamp_hi_u8_32(int a) { return std::min(a, 255); }
+
+CPPSPMD_FORCE_INLINE int4 add_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)(((const uint8_t*)&a)[i] + ((const uint8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 sub_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)(((const uint8_t*)&a)[i] - ((const uint8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 adds_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)clamp_hi_u8_32(((const uint8_t*)&a)[i] + ((const uint8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 subs_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)clamp_lo_u8_32(((const uint8_t*)&a)[i] - ((const uint8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 avg_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)((((const uint8_t*)&a)[i] + ((const uint8_t*)&b)[i] + 1) >> 1); return result; }
+CPPSPMD_FORCE_INLINE int4 max_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)std::max<uint8_t>(((const uint8_t*)&a)[i], ((const uint8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 min_epu8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (uint8_t)std::min<uint8_t>(((const uint8_t*)&a)[i], ((const uint8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 sad_epu8(const int4& a, const int4& b) 
+{ 
+	uint8_t vals[16];
+	for (int i = 0; i < 16; i++)
+		vals[i] = (uint8_t)std::abs((int)((const uint8_t*)&a)[i] - (int)((const uint8_t*)&b)[i]);
+	
+	int4 result;
+	result.c[0] = (uint16_t)(vals[0] + vals[1] + vals[2] + vals[3] + vals[4] + vals[5] + vals[6] + vals[7]);
+	result.c[1] = 0;
+	result.c[2] = (uint16_t)(vals[8] + vals[9] + vals[10] + vals[11] + vals[12] + vals[13] + vals[14] + vals[15]);
+	result.c[3] = 0;
+	
+	return result; 
+}
+
+CPPSPMD_FORCE_INLINE int4 unpacklo_epi8(const int4& a, const int4& b)
+{
+	int4 result;
+	uint8_t* pDst = (uint8_t*)&result;
+	const uint8_t* pA = (const uint8_t*)&a;
+	const uint8_t* pB = (const uint8_t*)&b;
+	
+	for (int i = 0; i < 8; i++)
+	{
+		pDst[i * 2 + 0] = pA[i];
+		pDst[i * 2 + 1] = pB[i];
+	}
+
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpackhi_epi8(const int4& a, const int4& b)
+{
+	int4 result;
+	uint8_t* pDst = (uint8_t*)&result;
+	const uint8_t* pA = (const uint8_t*)&a;
+	const uint8_t* pB = (const uint8_t*)&b;
+
+	for (int i = 0; i < 8; i++)
+	{
+		pDst[i * 2 + 0] = pA[8 + i];
+		pDst[i * 2 + 1] = pB[8 + i];
+	}
+
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int movemask_epi8(const int4& a)
+{
+	const uint8_t* pA = (const uint8_t*)&a;
+	int mask = 0;
+	for (int i = 0; i < 16; i++)
+		mask |= ((pA[i] >> 7) << i);
+	return mask;
+}
+
+CPPSPMD_FORCE_INLINE int4 lane_shuffle_epi32_int4(const int4& a, int control)
+{
+	assert(control >= 0 && control < 256);
+	int4 result;
+	result.c[0] = a.c[control & 3];
+	result.c[1] = a.c[(control >> 2) & 3];
+	result.c[2] = a.c[(control >> 4) & 3];
+	result.c[3] = a.c[(control >> 6) & 3];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 lane_shufflelo_epi16_int4(const int4& a, int control)
+{
+	assert(control >= 0 && control < 256);
+	int4 result;
+	((int16_t*)&result)[0] = ((const int16_t*)&a)[control & 3];
+	((int16_t*)&result)[1] = ((const int16_t*)&a)[(control >> 2) & 3];
+	((int16_t*)&result)[2] = ((const int16_t*)&a)[(control >> 4) & 3];
+	((int16_t*)&result)[3] = ((const int16_t*)&a)[(control >> 6) & 3];
+	result.c[2] = a.c[2];
+	result.c[3] = a.c[3];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 lane_shufflehi_epi16_int4(const int4& a, int control)
+{
+	assert(control >= 0 && control < 256);
+	int4 result;
+	result.c[0] = a.c[0];
+	result.c[1] = a.c[1];
+	((int16_t*)&result)[4] = ((const int16_t*)&a)[4 + (control & 3)];
+	((int16_t*)&result)[5] = ((const int16_t*)&a)[4 + ((control >> 2) & 3)];
+	((int16_t*)&result)[6] = ((const int16_t*)&a)[4 + ((control >> 4) & 3)];
+	((int16_t*)&result)[7] = ((const int16_t*)&a)[4 + ((control >> 6) & 3)];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 lane_shift_left_bytes(const int4& a, int l)
+{
+	if ((uint32_t)l > 16)
+		l = 16;
+
+	int4 result;
+	for (int i = 0; i < 16; i++)
+	{
+		uint8_t c = (i >= l) ? ((const uint8_t *)&a)[i - l] : 0;
+		((uint8_t *)&result)[i] = c;
+	}
+	
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 lane_shift_right_bytes(const int4& a, int l)
+{
+	if ((uint32_t)l > 16)
+		l = 16;
+
+	int4 result;
+	for (int i = 0; i < 16; i++)
+	{
+		uint8_t c = ((i + l) <= 15) ? ((const uint8_t *)&a)[i + l] : 0;
+		((uint8_t *)&result)[i] = c;
+	}
+	
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpacklo_epi8_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	const uint8_t* pA = (const uint8_t*)&a;
+	const uint8_t* pB = (const uint8_t*)&b;
+	uint8_t* pR = (uint8_t*)&result;
+	for (int i = 0; i < 8; i++)
+	{
+		pR[i * 2 + 0] = pA[i];
+		pR[i * 2 + 1] = pB[i];
+	}
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpackhi_epi8_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	const uint8_t* pA = (const uint8_t*)&a;
+	const uint8_t* pB = (const uint8_t*)&b;
+	uint8_t* pR = (uint8_t*)&result;
+	for (int i = 0; i < 8; i++)
+	{
+		pR[i * 2 + 0] = pA[8 + i];
+		pR[i * 2 + 1] = pB[8 + i];
+	}
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpacklo_epi16_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	const uint16_t* pA = (const uint16_t*)&a;
+	const uint16_t* pB = (const uint16_t*)&b;
+	uint16_t* pR = (uint16_t*)&result;
+	for (int i = 0; i < 4; i++)
+	{
+		pR[i * 2 + 0] = pA[i];
+		pR[i * 2 + 1] = pB[i];
+	}
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpackhi_epi16_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	const uint16_t* pA = (const uint16_t*)&a;
+	const uint16_t* pB = (const uint16_t*)&b;
+	uint16_t* pR = (uint16_t*)&result;
+	for (int i = 0; i < 4; i++)
+	{
+		pR[i * 2 + 0] = pA[4 + i];
+		pR[i * 2 + 1] = pB[4 + i];
+	}
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpacklo_epi32_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	result.c[0] = a.c[0];
+	result.c[1] = b.c[0];
+	result.c[2] = a.c[1];
+	result.c[3] = b.c[1];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpackhi_epi32_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	result.c[0] = a.c[2];
+	result.c[1] = b.c[2];
+	result.c[2] = a.c[3];
+	result.c[3] = b.c[3];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpacklo_epi64_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	result.c[0] = a.c[0];
+	result.c[1] = a.c[1];
+	result.c[2] = b.c[0];
+	result.c[3] = b.c[1];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 unpackhi_epi64_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	result.c[0] = a.c[2];
+	result.c[1] = a.c[3];
+	result.c[2] = b.c[2];
+	result.c[3] = b.c[3];
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 add_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((int8_t*)&result)[i] = (int8_t)(((const int8_t*)&a)[i] + ((const int8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 sub_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((int8_t*)&result)[i] = (int8_t)(((const int8_t*)&a)[i] - ((const int8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 adds_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((int8_t*)&result)[i] = (int8_t)saturate_i8_32(((const int8_t*)&a)[i] + ((const int8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 subs_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((int8_t*)&result)[i] = (int8_t)saturate_i8_32(((const int8_t*)&a)[i] - ((const int8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 max_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((int8_t*)&result)[i] = (int8_t)std::max<int8_t>(((const int8_t*)&a)[i], ((const int8_t*)&b)[i]); return result; }
+CPPSPMD_FORCE_INLINE int4 min_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((int8_t*)&result)[i] = (int8_t)std::min<int8_t>(((const int8_t*)&a)[i], ((const int8_t*)&b)[i]); return result; }
+
+CPPSPMD_FORCE_INLINE int4 cmpeq_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (((const int8_t*)&a)[i] == ((const int8_t*)&b)[i]) ? 0xFF : 00; return result; }
+CPPSPMD_FORCE_INLINE int4 cmplt_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (((const int8_t*)&a)[i] < ((const int8_t*)&b)[i]) ? 0xFF : 00; return result; }
+CPPSPMD_FORCE_INLINE int4 cmpgt_epi8(const int4& a, const int4& b) { int4 result; for (int i = 0; i < 16; i++) ((uint8_t*)&result)[i] = (((const int8_t*)&a)[i] > ((const int8_t*)&b)[i]) ? 0xFF : 00; return result; }
+
+CPPSPMD_FORCE_INLINE float4 blend_float4(const float4 &a, const float4 &b, const float4 &c) { return cast_int4_to_float4(blendv_int4(cast_float4_to_int4(a), cast_float4_to_int4(b), cast_float4_to_int4(c))); }
+CPPSPMD_FORCE_INLINE float4 blend_float4(const float4 &a, const float4 &b, const int4 &c) { return cast_int4_to_float4(blendv_int4(cast_float4_to_int4(a), cast_float4_to_int4(b), c)); }
 
 CPPSPMD_FORCE_INLINE void store_float4(float *pDst, const float4 &v, const uint32_t stride = 1) { pDst[0] = v.c[0]; pDst[stride] = v.c[1]; pDst[stride*2] = v.c[2]; pDst[stride*3] = v.c[3]; }
 CPPSPMD_FORCE_INLINE float4 load_float4(const float *pSrc, const uint32_t stride = 1) { return float4(pSrc[0], pSrc[stride], pSrc[stride*2], pSrc[stride*3]); }
@@ -243,13 +571,325 @@ CPPSPMD_FORCE_INLINE float4 gather_float4(const float *pSrc, const int4 &ofs) { 
 CPPSPMD_FORCE_INLINE void scatter_int4(int *pDst, const int4 &v, const int4 &ofs) { pDst[ofs.c[0]] = v.c[0]; pDst[ofs.c[1]] = v.c[1]; pDst[ofs.c[2]] = v.c[2]; pDst[ofs.c[3]] = v.c[3]; }
 CPPSPMD_FORCE_INLINE int4 gather_int4(const int *pSrc, const int4 &ofs) { int4 result(set1_int4(0)); result.c[0] = pSrc[ofs.c[0]]; result.c[1] = pSrc[ofs.c[1]]; result.c[2] = pSrc[ofs.c[2]]; result.c[3] = pSrc[ofs.c[3]]; return result; }
 
+CPPSPMD_FORCE_INLINE int4 shuffle_epi8_int4(const int4 &a, const int4 &b)
+{
+	int4 result;
+	for (int i = 0; i < 16; i++)
+	{
+		int v = ((const uint8_t*)&b)[i];
+		((uint8_t*)&result)[i] = (v & 128) ? 0 : ((const uint8_t*)&a)[v & 15];
+	}
+	return result;
+}
+
+CPPSPMD_FORCE_INLINE int4 add_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(pA[i] + pB[i]);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 adds_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)clamp32(pA[i] + pB[i], INT16_MIN, INT16_MAX);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 adds_epu16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const uint16_t *pA = (const uint16_t *)&a;
+	const uint16_t *pB = (const uint16_t *)&b;
+	uint16_t *pR = (uint16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (uint16_t)std::min<uint32_t>(pA[i] + pB[i], UINT16_MAX);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 sub_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(pA[i] - pB[i]);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 subs_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)clamp32((int)pA[i] - (int)pB[i], INT16_MIN, INT16_MAX);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 subs_epu16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const uint16_t *pA = (const uint16_t *)&a;
+	const uint16_t *pB = (const uint16_t *)&b;
+	uint16_t *pR = (uint16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (uint16_t)std::max<int>((int)pA[i] - (int)pB[i], 0);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 avg_epu16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const uint16_t *pA = (const uint16_t *)&a;
+	const uint16_t *pB = (const uint16_t *)&b;
+	uint16_t *pR = (uint16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (uint16_t)((pA[i] + pB[i] + 1) >> 1U);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 mullo_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)((int)pA[i] * (int)pB[i]);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 mulhi_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(((int)pA[i] * (int)pB[i]) >> 16);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 mulhi_epu16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const uint16_t *pA = (const uint16_t *)&a;
+	const uint16_t *pB = (const uint16_t *)&b;
+	uint16_t *pR = (uint16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (uint16_t)(((uint32_t)pA[i] * (uint32_t)pB[i]) >> 16U);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 min_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)std::min(pA[i], pB[i]);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 max_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)std::max(pA[i], pB[i]);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 madd_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int32_t *pR = (int32_t *)&r;
+	for (int i = 0; i < 4; i++)
+		pR[i] = pA[i * 2] * pB[i * 2] + pA[i * 2 + 1] * pB[i * 2 + 1];
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 cmpeq_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)((pA[i] == pB[i]) ? 0xFFFF : 0);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 cmpgt_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)((pA[i] > pB[i]) ? 0xFFFF : 0);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 cmplt_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)((pA[i] < pB[i]) ? 0xFFFF : 0);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 packs_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	int8_t *pR = (int8_t *)&r;
+	for (int i = 0; i < 8; i++)
+	{
+		pR[i] = (int8_t)clamp32(pA[i], INT8_MIN, INT8_MAX);
+		pR[i + 8] = (int8_t)clamp32(pB[i], INT8_MIN, INT8_MAX);
+	}
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 packus_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int16_t *pB = (const int16_t *)&b;
+	uint8_t *pR = (uint8_t *)&r;
+	for (int i = 0; i < 8; i++)
+	{
+		pR[i] = (uint8_t)clamp32(pA[i], 0, 255);
+		pR[i + 8] = (uint8_t)clamp32(pB[i], 0, 255);
+	}
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 sll_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int64_t *pB = (const int64_t *)&b;
+
+	uint32_t c = pB[0];
+	c = std::min(c, 16U);
+
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(pA[i] << c);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 sra_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int64_t *pB = (const int64_t *)&b;
+
+	uint32_t c = pB[0];
+	c = std::min(c, 16U);
+
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(pA[i] >> c);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 srl_epi16_int4(const int4& a, const int4& b)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	const int64_t *pB = (const int64_t *)&b;
+
+	uint32_t c = pB[0];
+	c = std::min(c, 16U);
+
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(((uint16_t)pA[i]) >> c);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 slli_epi16_int4(const int4& a, uint32_t c)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+		
+	c = std::min(c, 16U);
+
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(pA[i] << c);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 srai_epi16_int4(const int4& a, uint32_t c)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+	
+	c = std::min(c, 16U);
+
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(pA[i] >> c);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 srli_epi16_int4(const int4& a, uint32_t c)
+{
+	int4 r;
+	const int16_t *pA = (const int16_t *)&a;
+		
+	c = std::min(c, 16U);
+
+	int16_t *pR = (int16_t *)&r;
+	for (int i = 0; i < 8; i++)
+		pR[i] = (int16_t)(((uint16_t)pA[i]) >> c);
+	return r;
+}
+
+CPPSPMD_FORCE_INLINE int4 mul_epu32_int4(const int4& a, const int4& b)
+{
+	int4 result;
+	uint64_t *pR = (uint64_t *)&result;
+	pR[0] = (uint64_t)a.c[0] * (uint32_t)b.c[0];
+	pR[1] = (uint64_t)a.c[1] * (uint32_t)b.c[1];
+	return result;
+}
+
 const uint32_t ALL_ON_MOVEMASK = 0xF;
 
 struct spmd_kernel
 {
 	struct vint;
+	struct lint;
 	struct vbool;
 	struct vfloat;
+
+	typedef vint vint_t;
+	typedef lint lint_t;
 		
 	// Exec mask
 	struct exec_mask
@@ -266,34 +906,53 @@ struct spmd_kernel
 		static CPPSPMD_FORCE_INLINE exec_mask all_on()	{ return exec_mask{ set1_int4(UINT32_MAX) }; }
 		static CPPSPMD_FORCE_INLINE exec_mask all_off() { return exec_mask{ set1_int4(0) }; }
 
-		CPPSPMD_FORCE_INLINE uint32_t get_movemask() const { return get_movemask_int4(m_mask); }
+		CPPSPMD_FORCE_INLINE uint32_t get_movemask() const { return movemask_int4(m_mask); }
 	};
 
 	friend CPPSPMD_FORCE_INLINE bool all(const exec_mask& e);
 	friend CPPSPMD_FORCE_INLINE bool any(const exec_mask& e);
+
+	// true if all lanes active
+	CPPSPMD_FORCE_INLINE bool spmd_all() const { return all(m_exec); }
+	// true if any lanes active
+	CPPSPMD_FORCE_INLINE bool spmd_any() const { return any(m_exec); }
+	// true if no lanes active
+	CPPSPMD_FORCE_INLINE bool spmd_none() { return !any(m_exec); }
+
+	// true if cond is true for all active lanes - false if no active lanes
+	CPPSPMD_FORCE_INLINE bool spmd_all(const vbool& e) { uint32_t m = m_exec.get_movemask(); return (m != 0) && ((exec_mask(e) & m_exec).get_movemask() == m); }
+	// true if cond is true for any active lanes
+	CPPSPMD_FORCE_INLINE bool spmd_any(const vbool& e) { return (exec_mask(e) & m_exec).get_movemask() != 0; }
+	// false if cond is true for any active lanes
+	CPPSPMD_FORCE_INLINE bool spmd_none(const vbool& e) { return !spmd_any(e); }
 
 	friend CPPSPMD_FORCE_INLINE exec_mask operator^ (const exec_mask& a, const exec_mask& b);
 	friend CPPSPMD_FORCE_INLINE exec_mask operator& (const exec_mask& a, const exec_mask& b);
 	friend CPPSPMD_FORCE_INLINE exec_mask operator| (const exec_mask& a, const exec_mask& b);
 		
 	exec_mask m_exec;
-	exec_mask m_internal_exec;
 	exec_mask m_kernel_exec;
 	exec_mask m_continue_mask;
+#ifdef _DEBUG
+	bool m_in_loop;
+#endif
+		
+	CPPSPMD_FORCE_INLINE uint32_t get_movemask() const { return m_exec.get_movemask(); }
 		
 	void init(const exec_mask& kernel_exec);
 	
 	// Varying bool
-		
 	struct vbool
 	{
 		int4 m_value;
+
+		vbool() = default;
 
 		CPPSPMD_FORCE_INLINE vbool(bool value) : m_value(set1_int4(value ? UINT32_MAX : 0)) { }
 
 		CPPSPMD_FORCE_INLINE vbool(const vbool& b) { m_value.c[0] = b.m_value.c[0]; m_value.c[1] = b.m_value.c[1]; m_value.c[2] = b.m_value.c[2]; m_value.c[3] = b.m_value.c[3]; }
 
-		CPPSPMD_FORCE_INLINE explicit vbool(const int4& value) : m_value(value) { assert((m_value.c[0] == 0) || (m_value.c[0] == UINT32_MAX)); assert((m_value.c[1] == 0) || (m_value.c[1] == UINT32_MAX)); assert((m_value.c[2] == 0) || (m_value.c[2] == UINT32_MAX)); assert((m_value.c[3] == 0) || (m_value.c[3] == UINT32_MAX)); }
+		CPPSPMD_FORCE_INLINE explicit vbool(const int4& value) : m_value(value) { assert((m_value.c[0] == 0) || ((uint32_t)m_value.c[0] == UINT32_MAX)); assert((m_value.c[1] == 0) || ((uint32_t)m_value.c[1] == UINT32_MAX)); assert((m_value.c[2] == 0) || ((uint32_t)m_value.c[2] == UINT32_MAX)); assert((m_value.c[3] == 0) || ((uint32_t)m_value.c[3] == UINT32_MAX)); }
 
 		CPPSPMD_FORCE_INLINE explicit operator vfloat() const;
 		CPPSPMD_FORCE_INLINE explicit operator vint() const;
@@ -306,7 +965,7 @@ struct spmd_kernel
 
 	CPPSPMD_FORCE_INLINE vbool& store(vbool& dst, const vbool& src)
 	{
-		dst.m_value = blend_int4(dst.m_value, src.m_value, m_exec.m_mask);
+		dst.m_value = blendv_int4(dst.m_value, src.m_value, m_exec.m_mask);
 		return dst;
 	}
 		
@@ -706,6 +1365,22 @@ struct spmd_kernel
 		return vint{ gather_int4(src.m_pValue, src.m_vindex) };
 	}
 
+	CPPSPMD_FORCE_INLINE vint load_bytes_all(const cint_vref& src)
+	{
+		vint result;
+		for (int i = 0; i < 4; i++)
+			result.m_value.c[i] = ((const int32_t*)((const uint8_t*)src.m_pValue + src.m_vindex.c[i]))[0];
+		return result;
+	}
+
+	CPPSPMD_FORCE_INLINE vint load_words_all(const cint_vref& src)
+	{
+		vint result;
+		for (int i = 0; i < 4; i++)
+			result.m_value.c[i] = ((const int32_t*)((const uint8_t*)src.m_pValue + 2 * src.m_vindex.c[i]))[0];
+		return result;
+	}
+
 	CPPSPMD_FORCE_INLINE void store_strided(int *pDst, uint32_t stride, const vint &v)
 	{
 		store_mask_int4(pDst, v.m_value, m_exec.m_mask, stride);
@@ -748,7 +1423,7 @@ struct spmd_kernel
 
 	CPPSPMD_FORCE_INLINE const vfloat_vref& store(const vfloat_vref& dst, const vfloat& src)
 	{
-		int mask = get_movemask_int4(m_exec.m_mask);
+		int mask = movemask_int4(m_exec.m_mask);
 		
 		if (mask & 1) dst.m_pValue[dst.m_vindex.c[0]].m_value.c[0] = src.m_value.c[0];
 		if (mask & 2) dst.m_pValue[dst.m_vindex.c[1]].m_value.c[1] = src.m_value.c[1];
@@ -760,7 +1435,7 @@ struct spmd_kernel
 
 	CPPSPMD_FORCE_INLINE vfloat load(const vfloat_vref& src)
 	{
-		int mask = get_movemask_int4(m_exec.m_mask);
+		int mask = movemask_int4(m_exec.m_mask);
 
 		float4 k = set1_float4(0.0f);
 
@@ -774,7 +1449,7 @@ struct spmd_kernel
 
 	CPPSPMD_FORCE_INLINE const vint_vref& store(const vint_vref& dst, const vint& src)
 	{
-		int mask = get_movemask_int4(m_exec.m_mask);
+		int mask = movemask_int4(m_exec.m_mask);
 		
 		if (mask & 1) dst.m_pValue[dst.m_vindex.c[0]].m_value.c[0] = src.m_value.c[0];
 		if (mask & 2) dst.m_pValue[dst.m_vindex.c[1]].m_value.c[1] = src.m_value.c[1];
@@ -786,7 +1461,7 @@ struct spmd_kernel
 
 	CPPSPMD_FORCE_INLINE vint load(const vint_vref& src)
 	{
-		int mask = get_movemask_int4(m_exec.m_mask);
+		int mask = movemask_int4(m_exec.m_mask);
 
 		int4 k = set1_int4(0);
 
@@ -847,6 +1522,12 @@ struct spmd_kernel
 	private:
 		lint& operator=(const lint&);
 	};
+
+	CPPSPMD_FORCE_INLINE lint& store_all(lint& dst, const lint& src)
+	{
+		dst.m_value = src.m_value;
+		return dst;
+	}
 	
 	const lint program_index = lint{ int4(0, 1, 2, 3) };
 	
@@ -859,210 +1540,47 @@ struct spmd_kernel
 
 	// No breaks, continues, etc. allowed
 	template<typename IfBody>
-	CPPSPMD_FORCE_INLINE void spmd_simple_if(const vbool& cond, const IfBody& ifBody);
-
-	// No breaks, continues, etc. allowed
-	template<typename IfAnyBody, typename IfAllBody>
-	CPPSPMD_FORCE_INLINE void spmd_simple_if_all(const vbool& cond, const IfAnyBody& ifAnyBody, const IfAllBody& ifAllBody);
-
+	CPPSPMD_FORCE_INLINE void spmd_sif(const vbool& cond, const IfBody& ifBody);
+		
 	// No breaks, continues, etc. allowed
 	template<typename IfBody, typename ElseBody>
-	CPPSPMD_FORCE_INLINE void spmd_simple_ifelse(const vbool& cond, const IfBody& ifBody, const ElseBody &elseBody);
-
-	template<typename IfAnyBody, typename IfAllBody>
-	CPPSPMD_FORCE_INLINE void spmd_if_all(const vbool& cond, const IfAnyBody& ifBody, const IfAllBody& ifAllBody);
-		
+	CPPSPMD_FORCE_INLINE void spmd_sifelse(const vbool& cond, const IfBody& ifBody, const ElseBody &elseBody);
+				
 	template<typename IfBody, typename ElseBody>
 	CPPSPMD_FORCE_INLINE void spmd_ifelse(const vbool& cond, const IfBody& ifBody, const ElseBody& elseBody);
 
-	template<typename IfAnyBody, typename IfAllBody, typename ElseAnyBody, typename ElseAllBody>
-	CPPSPMD_FORCE_INLINE void spmd_ifelse_all(const vbool& cond, 
-		const IfAnyBody& ifAnyBody, const IfAllBody& ifAllBody, 
-		const ElseAnyBody& elseAnyBody, const ElseAllBody &elseAllBody);
-
-	template<typename IfAnyBody, typename IfAllBody, typename ElseAnyBody>
-	CPPSPMD_FORCE_INLINE void spmd_ifelse_all(const vbool& cond, 
-		const IfAnyBody& ifAnyBody, const IfAllBody& ifAllBody, 
-		const ElseAnyBody& elseAnyBody);
-
 	template<typename WhileCondBody, typename WhileBody>
-	CPPSPMD_FORCE_INLINE void spmd_while(const WhileCondBody& whileCondBody, const WhileBody& whileBody)
-	{
-		exec_mask orig_internal_exec = m_internal_exec;
+	CPPSPMD_FORCE_INLINE void spmd_while(const WhileCondBody& whileCondBody, const WhileBody& whileBody);
 
-		exec_mask orig_continue_mask = m_continue_mask;
-		m_continue_mask = exec_mask::all_off();
-
-#ifdef _DEBUG
-		const bool prev_in_loop = m_in_loop;
-		m_in_loop = true;
-#endif
-
-		while(true)
-		{
-			exec_mask cond_exec = exec_mask(whileCondBody());
-			m_internal_exec = m_internal_exec & cond_exec;
-			m_exec = m_exec & cond_exec;
-
-			if (!any(m_exec))
-				break;
-
-			whileBody();
-
-			m_internal_exec = m_internal_exec | m_continue_mask;
-			m_exec = m_internal_exec & m_kernel_exec;
-			m_continue_mask = exec_mask::all_off();
-		}
-
-#ifdef _DEBUG
-		m_in_loop = prev_in_loop;
-#endif
-
-		m_internal_exec = orig_internal_exec;
-		m_exec = m_internal_exec & m_kernel_exec;
-
-		m_continue_mask = orig_continue_mask;
-	}
-
-	struct scoped_while_restorer
-	{
-		spmd_kernel *m_pKernel;
-		exec_mask m_orig_internal_exec, m_orig_continue_mask;
-#ifdef _DEBUG
-		bool m_prev_in_loop;
-#endif
-				
-		CPPSPMD_FORCE_INLINE scoped_while_restorer(spmd_kernel *pKernel) : 
-			m_pKernel(pKernel), 
-			m_orig_internal_exec(pKernel->m_internal_exec),
-			m_orig_continue_mask(pKernel->m_continue_mask)
-		{
-			pKernel->m_continue_mask.all_off();
-
-#ifdef _DEBUG
-			m_prev_in_loop = pKernel->m_in_loop;
-			pKernel->m_in_loop = true;
-#endif
-		}
-
-		CPPSPMD_FORCE_INLINE ~scoped_while_restorer() 
-		{ 
-#ifdef _DEBUG
-			m_pKernel->m_in_loop = m_prev_in_loop;
-#endif
-			m_pKernel->m_internal_exec = m_orig_internal_exec;
-			m_pKernel->m_exec = m_pKernel->m_kernel_exec & m_pKernel->m_internal_exec;
-			m_pKernel->m_continue_mask = m_orig_continue_mask;
-		}
-	};
-
-#undef SPMD_WHILE
-#undef SPMD_WEND
-
-#define SPMD_WHILE(cond) { scoped_while_restorer CPPSPMD_GLUER2(_while_restore_, __LINE__)(this); while(true) { exec_mask CPPSPMD_GLUER2(cond_exec, __LINE__) = exec_mask(vbool(cond)); m_internal_exec = m_internal_exec & CPPSPMD_GLUER2(cond_exec, __LINE__); m_exec = m_exec & CPPSPMD_GLUER2(cond_exec, __LINE__); if (!any(m_exec)) break;
-#define SPMD_WEND m_internal_exec = m_internal_exec | m_continue_mask; m_exec = m_internal_exec & m_kernel_exec; m_continue_mask = exec_mask::all_off(); } }
-		
 	template<typename ForInitBody, typename ForCondBody, typename ForIncrBody, typename ForBody>
-	CPPSPMD_FORCE_INLINE void spmd_for(const ForInitBody& forInitBody, const ForCondBody& forCondBody, const ForIncrBody& forIncrBody, const ForBody& forBody)
-	{
-		exec_mask orig_internal_exec = m_internal_exec;
-
-		forInitBody();
-
-		exec_mask orig_continue_mask = m_continue_mask;
-		m_continue_mask = exec_mask::all_off();
-
-#ifdef _DEBUG
-		const bool prev_in_loop = m_in_loop;
-		m_in_loop = true;
-#endif
-
-		while(true)
-		{
-			exec_mask cond_exec = exec_mask(forCondBody());
-			m_internal_exec = m_internal_exec & cond_exec;
-			m_exec = m_exec & cond_exec;
-
-			if (!any(m_exec))
-				break;
-
-			forBody();
-
-			m_internal_exec = m_internal_exec | m_continue_mask;
-			m_exec = m_internal_exec & m_kernel_exec;
-			m_continue_mask = exec_mask::all_off();
-			
-			forIncrBody();
-		}
-
-#ifdef _DEBUG
-		m_in_loop = prev_in_loop;
-#endif
-
-		m_internal_exec = orig_internal_exec;
-		m_exec = m_internal_exec & m_kernel_exec;
-
-		m_continue_mask = orig_continue_mask;
-	}
+	CPPSPMD_FORCE_INLINE void spmd_for(const ForInitBody& forInitBody, const ForCondBody& forCondBody, const ForIncrBody& forIncrBody, const ForBody& forBody);
 
 	template<typename ForeachBody>
 	CPPSPMD_FORCE_INLINE void spmd_foreach(int begin, int end, const ForeachBody& foreachBody);
-		
+
 #ifdef _DEBUG
-	bool m_in_loop;
+	CPPSPMD_FORCE_INLINE void check_masks();
+#else
+	CPPSPMD_FORCE_INLINE void check_masks() { }
 #endif
 
-	CPPSPMD_FORCE_INLINE void spmd_break()
-	{
-#ifdef _DEBUG
-		assert(m_in_loop);
-#endif
-
-		m_internal_exec = exec_mask::all_off();
-		m_exec = exec_mask::all_off();
-	}
-
-	CPPSPMD_FORCE_INLINE void spmd_continue()
-	{
-#ifdef _DEBUG
-		assert(m_in_loop);
-#endif
-
-		m_continue_mask = m_continue_mask | m_internal_exec;
-		m_internal_exec = exec_mask::all_off();
-		m_exec = exec_mask::all_off();
-	}
-
+	CPPSPMD_FORCE_INLINE void spmd_break();
+	CPPSPMD_FORCE_INLINE void spmd_continue();
 	CPPSPMD_FORCE_INLINE void spmd_return();
 		
 	template<typename UnmaskedBody>
-	CPPSPMD_FORCE_INLINE void spmd_unmasked(const UnmaskedBody& unmaskedBody)
-	{
-		exec_mask orig_exec = m_exec, orig_kernel_exec = m_kernel_exec, orig_internal_exec = m_internal_exec;
-
-		m_kernel_exec = exec_mask::all_on();
-		m_internal_exec = exec_mask::all_on();
-		m_exec = exec_mask::all_on();
-
-		unmaskedBody();
-
-		m_kernel_exec = m_kernel_exec & orig_kernel_exec;
-		m_internal_exec = m_internal_exec & orig_internal_exec;
-		m_exec = m_exec & orig_exec;
-	}
+	CPPSPMD_FORCE_INLINE void spmd_unmasked(const UnmaskedBody& unmaskedBody);
 
 	template<typename SPMDKernel, typename... Args>
-	CPPSPMD_FORCE_INLINE decltype(auto) spmd_call(Args&&... args)
-	{
-		SPMDKernel kernel;
-		kernel.init(m_exec);
-		return kernel._call(std::forward<Args>(args)...);
-	}
+	CPPSPMD_FORCE_INLINE decltype(auto) spmd_call(Args&&... args);
 
 	CPPSPMD_FORCE_INLINE void swap(vint &a, vint &b) { vint temp = a; store(a, b); store(b, temp); }
 	CPPSPMD_FORCE_INLINE void swap(vfloat &a, vfloat &b) { vfloat temp = a; store(a, b); store(b, temp); }
 	CPPSPMD_FORCE_INLINE void swap(vbool &a, vbool &b) { vbool temp = a; store(a, b); store(b, temp); }
-};
+
+	#include "cppspmd_math_declares.h"
+
+}; // struct spmd_kernel
 
 using exec_mask = spmd_kernel::exec_mask;
 using vint = spmd_kernel::vint;
@@ -1103,6 +1621,7 @@ CPPSPMD_FORCE_INLINE exec_mask operator|(const exec_mask& a, const exec_mask& b)
 CPPSPMD_FORCE_INLINE bool all(const exec_mask& e) { return (e.m_mask.c[0] & e.m_mask.c[1] & e.m_mask.c[2] & e.m_mask.c[3]) != 0; }
 CPPSPMD_FORCE_INLINE bool any(const exec_mask& e) { return (e.m_mask.c[0] | e.m_mask.c[1] | e.m_mask.c[2] | e.m_mask.c[3]) != 0; }
 
+// Bad pattern - doesn't factor in the current exec mask. Prefer spmd_any() instead.
 CPPSPMD_FORCE_INLINE bool all(const vbool& e) { return (e.m_value.c[0] & e.m_value.c[1] & e.m_value.c[2] & e.m_value.c[3]) != 0; }
 CPPSPMD_FORCE_INLINE bool any(const vbool& e) { return (e.m_value.c[0] | e.m_value.c[1] | e.m_value.c[2] | e.m_value.c[3]) != 0; }
 
@@ -1153,7 +1672,7 @@ CPPSPMD_FORCE_INLINE vbool operator>=(const vfloat& a, const vfloat& b) { return
 CPPSPMD_FORCE_INLINE vbool operator>=(const vfloat& a, float b) { return a >= vfloat(b); }
 
 CPPSPMD_FORCE_INLINE vfloat spmd_ternaryf(const vbool& cond, const vfloat& a, const vfloat& b) { return vfloat{ blend_float4(b.m_value, a.m_value, cond.m_value) }; }
-CPPSPMD_FORCE_INLINE vint spmd_ternaryi(const vbool& cond, const vint& a, const vint& b) { return vint{ blend_int4(b.m_value, a.m_value, cond.m_value) }; }
+CPPSPMD_FORCE_INLINE vint spmd_ternaryi(const vbool& cond, const vint& a, const vint& b) { return vint{ blendv_int4(b.m_value, a.m_value, cond.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vfloat sqrt(const vfloat& v) { return vfloat{ sqrt_float4(v.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat abs(const vfloat& v) { return vfloat{ abs_float4(v.m_value) }; }
@@ -1163,9 +1682,15 @@ CPPSPMD_FORCE_INLINE vfloat ceil(const vfloat& a) { return vfloat{ ceil_float4(a
 CPPSPMD_FORCE_INLINE vfloat floor(const vfloat& v) { return vfloat{ floor_float4(v.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat round_nearest(const vfloat &a) { return vfloat{ round_float4(a.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat round_truncate(const vfloat &a) { return vfloat{ truncate_float4(a.m_value) }; }
+CPPSPMD_FORCE_INLINE vfloat frac(const vfloat& a) { return a - floor(a); }
+CPPSPMD_FORCE_INLINE vfloat fmod(vfloat a, vfloat b) { vfloat c = frac(abs(a / b)) * abs(b); return spmd_ternaryf(a < 0, -c, c); }
+CPPSPMD_FORCE_INLINE vfloat sign(const vfloat& a) { return spmd_ternaryf(a < 0.0f, 1.0f, 1.0f); }
 
 CPPSPMD_FORCE_INLINE vint max(const vint& a, const vint& b) { return vint{ max_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint min(const vint& a, const vint& b) { return vint{ min_int4(a.m_value, b.m_value) }; }
+
+CPPSPMD_FORCE_INLINE vint maxu(const vint& a, const vint& b) { return vint{ max_uint4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint minu(const vint& a, const vint& b) { return vint{ min_uint4(a.m_value, b.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vint cast_vfloat_to_vint(const vfloat& v) { return vint{ create_int4(CAST_F_TO_I(v.m_value.c[0]), CAST_F_TO_I(v.m_value.c[1]), CAST_F_TO_I(v.m_value.c[2]), CAST_F_TO_I(v.m_value.c[3])) }; }
 CPPSPMD_FORCE_INLINE vfloat cast_vint_to_vfloat(const vint & v) { return vfloat{ create_float4(CAST_I_TO_F(v.m_value.c[0]), CAST_I_TO_F(v.m_value.c[1]), CAST_I_TO_F(v.m_value.c[2]), CAST_I_TO_F(v.m_value.c[3])) }; }
@@ -1211,6 +1736,7 @@ CPPSPMD_FORCE_INLINE vfloat operator*(float b, const lint& a) { return vfloat(a)
 
 CPPSPMD_FORCE_INLINE vint operator&(const vint& a, const vint& b) { return vint{ and_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator&(const vint& a, int b) { return a & vint(b); }
+CPPSPMD_FORCE_INLINE vint andnot(const vint& a, const vint& b) { return vint{ andnot_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator|(const vint& a, const vint& b) { return vint{ or_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator|(const vint& a, int b) { return a | vint(b); }
 CPPSPMD_FORCE_INLINE vint operator^(const vint& a, const vint& b) { return vint{ xor_int4(a.m_value, b.m_value) }; }
@@ -1233,11 +1759,123 @@ CPPSPMD_FORCE_INLINE vint operator*(int a, const vint& b) { return vint(a) * b; 
 
 CPPSPMD_FORCE_INLINE vint operator-(const vint& v) { return vint{ neg_int4(v.m_value) }; }
 
+CPPSPMD_FORCE_INLINE vint operator~(const vint& a) { return vint{ inv_int4(a.m_value) }; }
+
+// A few of these break the lane-based abstraction model. They are supported in SSE2, so it makes sense to support them and let the user figure it out.
+CPPSPMD_FORCE_INLINE vint adds_epu8(const vint& a, const vint& b) { return vint{ adds_epu8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint subs_epu8(const vint& a, const vint& b) { return vint{ subs_epu8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint avg_epu8(const vint& a, const vint& b) { return vint{ avg_epu8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint max_epu8(const vint& a, const vint& b) { return vint{ max_epu8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint min_epu8(const vint& a, const vint& b) { return vint{ min_epu8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint sad_epu8(const vint& a, const vint& b) { return vint{ sad_epu8(a.m_value, b.m_value) }; }
+
+CPPSPMD_FORCE_INLINE vint add_epi8(const vint& a, const vint& b) { return vint{ add_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint adds_epi8(const vint& a, const vint& b) { return vint{ adds_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint sub_epi8(const vint& a, const vint& b) { return vint{ sub_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint subs_epi8(const vint& a, const vint& b) { return vint{ subs_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmpeq_epi8(const vint& a, const vint& b) { return vint{ cmpeq_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmpgt_epi8(const vint& a, const vint& b) { return vint{ cmpgt_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmplt_epi8(const vint& a, const vint& b) { return vint{ cmplt_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint unpacklo_epi8(const vint& a, const vint& b) { return vint{ unpacklo_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint unpackhi_epi8(const vint& a, const vint& b) { return vint{ unpackhi_epi8(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE int movemask_epi8(const vint& a) { return movemask_epi8(a.m_value); }
+CPPSPMD_FORCE_INLINE int movemask_epi32(const vint& a) { return movemask_int4(a.m_value); }
+
+CPPSPMD_FORCE_INLINE vint cmple_epu8(const vint& a, const vint& b) { return vint{ cmpeq_epi8(min_epu8(a.m_value, b.m_value), a.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmpge_epu8(const vint& a, const vint& b) { return vint{ cmple_epu8(b, a) }; }
+CPPSPMD_FORCE_INLINE vint cmpgt_epu8(const vint& a, const vint& b) { return vint{ andnot_int4(cmpeq_epi8(a.m_value, b.m_value), cmp_eq_int4(max_epu8(a.m_value, b.m_value), a.m_value)) }; }
+CPPSPMD_FORCE_INLINE vint cmplt_epu8(const vint& a, const vint& b) { return vint{ cmpgt_epu8(b, a) }; }
+CPPSPMD_FORCE_INLINE vint absdiff_epu8(const vint& a, const vint& b) { return vint{ or_int4(subs_epu8(a.m_value, b.m_value), subs_epu8(b.m_value, a.m_value)) }; }
+
+CPPSPMD_FORCE_INLINE vint blendv_epi8(const vint& a, const vint& b, const vint &mask) { return vint{ blendv_epi8_int4(a.m_value, b.m_value, mask.m_value) }; }
+CPPSPMD_FORCE_INLINE vint blendv_epi32(const vint& a, const vint& b, const vint &mask) { return vint{ blendv_int4(a.m_value, b.m_value, mask.m_value) }; }
+
+// control is an 8-bit immediate value containing 4 2-bit indices which shuffles the int32's in each 128-bit lane.
+#define VINT_LANE_SHUFFLE_EPI32(a, control) vint(lane_shuffle_epi32_int4(a.m_value, control))
+
+// control is an 8-bit immediate value containing 4 2-bit indices which shuffles the int16's in either the high or low 64-bit lane.
+#define VINT_LANE_SHUFFLELO_EPI16(a, control) vint(lane_shufflelo_epi16_int4(a.m_value, control))
+#define VINT_LANE_SHUFFLEHI_EPI16(a, control) vint(lane_shufflehi_epi16_int4(a.m_value, control))
+
+#define VINT_LANE_SHUFFLE_MASK(a, b, c, d) ((a) | ((b) << 2) | ((c) << 4) | ((d) << 6))
+#define VINT_LANE_SHUFFLE_MASK_R(d, c, b, a) ((a) | ((b) << 2) | ((c) << 4) | ((d) << 6))
+
+// _mm_srli_si128/_mm_slli_si128
+#define VINT_LANE_SHIFT_LEFT_BYTES(a, l) vint(lane_shift_left_bytes(a.m_value, l))
+#define VINT_LANE_SHIFT_RIGHT_BYTES(a, l) vint(lane_shift_right_bytes(a.m_value, l))
+
+// Unpack and interleave 8-bit integers from the low or high half of a and b
+CPPSPMD_FORCE_INLINE vint vint_lane_unpacklo_epi8(const vint& a, const vint& b) { return vint(unpacklo_epi8_int4(a.m_value, b.m_value)); }
+CPPSPMD_FORCE_INLINE vint vint_lane_unpackhi_epi8(const vint& a, const vint& b) { return vint(unpackhi_epi8_int4(a.m_value, b.m_value)); }
+
+// Unpack and interleave 16-bit integers from the low or high half of a and b
+CPPSPMD_FORCE_INLINE vint vint_lane_unpacklo_epi16(const vint& a, const vint& b) { return vint(unpacklo_epi16_int4(a.m_value, b.m_value)); }
+CPPSPMD_FORCE_INLINE vint vint_lane_unpackhi_epi16(const vint& a, const vint& b) { return vint(unpackhi_epi16_int4(a.m_value, b.m_value)); }
+
+// Unpack and interleave 32-bit integers from the low or high half of a and b
+CPPSPMD_FORCE_INLINE vint vint_lane_unpacklo_epi32(const vint& a, const vint& b) { return vint(unpacklo_epi32_int4(a.m_value, b.m_value)); }
+CPPSPMD_FORCE_INLINE vint vint_lane_unpackhi_epi32(const vint& a, const vint& b) { return vint(unpackhi_epi32_int4(a.m_value, b.m_value)); }
+
+// Unpack and interleave 64-bit integers from the low or high half of a and b
+CPPSPMD_FORCE_INLINE vint vint_lane_unpacklo_epi64(const vint& a, const vint& b) { return vint(unpacklo_epi64_int4(a.m_value, b.m_value)); }
+CPPSPMD_FORCE_INLINE vint vint_lane_unpackhi_epi64(const vint& a, const vint& b) { return vint(unpackhi_epi64_int4(a.m_value, b.m_value)); }
+
+CPPSPMD_FORCE_INLINE vint vint_set1_epi8(int8_t a) { int v = (uint8_t)a | ((uint8_t)a << 8) | ((uint8_t)a << 16) | ((uint8_t)a << 24); return vint(int4(v, v, v, v)); }
+CPPSPMD_FORCE_INLINE vint vint_set1_epi16(int16_t a) { int v = (uint16_t)a | ((uint16_t)a << 16); return vint(int4(v, v, v, v)); }
+CPPSPMD_FORCE_INLINE vint vint_set1_epi32(int32_t a) { return vint(int4(a, a, a, a)); }
+CPPSPMD_FORCE_INLINE vint vint_set1_epi64(int64_t a) { return vint(int4((int32_t)a, (int32_t)(a >> 32), (int32_t)a, (int32_t)(a >> 32))); }
+
+CPPSPMD_FORCE_INLINE vint add_epi16(const vint& a, const vint& b) { return vint{ add_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint adds_epi16(const vint& a, const vint& b) { return vint{ adds_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint adds_epu16(const vint& a, const vint& b) { return vint{ adds_epu16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint avg_epu16(const vint& a, const vint& b) { return vint{ avg_epu16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint sub_epi16(const vint& a, const vint& b) { return vint{ sub_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint subs_epi16(const vint& a, const vint& b) { return vint{ subs_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint subs_epu16(const vint& a, const vint& b) { return vint{ subs_epu16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint mullo_epi16(const vint& a, const vint& b) { return vint{ mullo_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint mulhi_epi16(const vint& a, const vint& b) { return vint{ mulhi_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint mulhi_epu16(const vint& a, const vint& b) { return vint{ mulhi_epu16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint min_epi16(const vint& a, const vint& b) { return vint{ min_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint max_epi16(const vint& a, const vint& b) { return vint{ max_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint madd_epi16(const vint& a, const vint& b) { return vint{ madd_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmpeq_epi16(const vint& a, const vint& b) { return vint{ cmpeq_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmpgt_epi16(const vint& a, const vint& b) { return vint{ cmpgt_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint cmplt_epi16(const vint& a, const vint& b) { return vint{ cmplt_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint packs_epi16(const vint& a, const vint& b) { return vint{ packs_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint packus_epi16(const vint& a, const vint& b) { return vint{ packus_epi16_int4(a.m_value, b.m_value) }; }
+
+CPPSPMD_FORCE_INLINE vint uniform_shift_left_epi16(const vint& a, const vint& b) { return vint{ sll_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint uniform_arith_shift_right_epi16(const vint& a, const vint& b) { return vint{ sra_epi16_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint uniform_shift_right_epi16(const vint& a, const vint& b) { return vint{ srl_epi16_int4(a.m_value, b.m_value) }; }
+
+#define VINT_SHIFT_LEFT_EPI16(a, b) vint(slli_epi16_int4((a).m_value, b))
+#define VINT_SHIFT_RIGHT_EPI16(a, b) vint(srai_epi16_int4((a).m_value, b))
+#define VUINT_SHIFT_RIGHT_EPI16(a, b) vint(srli_epi16_int4((a).m_value, b))
+
+CPPSPMD_FORCE_INLINE vint undefined_vint() { return vint{ set1_int4(0) }; }
+CPPSPMD_FORCE_INLINE vfloat undefined_vfloat() { return vfloat{ set1_float4(0) }; }
+
+CPPSPMD_FORCE_INLINE vint abs(const vint& v) { return vint{ abs_int4(v.m_value) }; }
+
+CPPSPMD_FORCE_INLINE vint mul_epu32(const vint &a, const vint& b) { return vint(mul_epu32_int4(a.m_value, b.m_value)); }
+
+CPPSPMD_FORCE_INLINE vint div_epi32(const vint &a, const vint& b) { return vint(div_int4(a.m_value, b.m_value)); }
+
+CPPSPMD_FORCE_INLINE vint mod_epi32(const vint &a, const vint& b)
+{
+	vint aa = abs(a), ab = abs(b);
+	vint q = div_epi32(aa, ab);
+	vint r = aa - q * ab;
+	return spmd_ternaryi(a < 0, -r, r);
+}
+
 // Div/mod both suppress divide by 0
 CPPSPMD_FORCE_INLINE vint operator/ (const vint& a, const vint& b) { return vint{ div_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator/ (const vint& a, int b) { return vint{ div_int4(a.m_value, b) }; }
-CPPSPMD_FORCE_INLINE vint operator% (const vint& a, const vint& b) { return vint{ mod_int4(a.m_value, b.m_value) }; }
-CPPSPMD_FORCE_INLINE vint operator% (const vint& a, int b) { return vint{ mod_int4(a.m_value, b) }; }
+//CPPSPMD_FORCE_INLINE vint operator% (const vint& a, const vint& b) { return vint{ mod_int4(a.m_value, b.m_value) }; }
+//CPPSPMD_FORCE_INLINE vint operator% (const vint& a, int b) { return vint{ mod_int4(a.m_value, b) }; }
+CPPSPMD_FORCE_INLINE vint operator% (const vint& a, const vint& b) { return mod_epi32(a, b); }
+CPPSPMD_FORCE_INLINE vint operator% (const vint& a, int b) { return mod_epi32(a, vint(b)); }
 
 CPPSPMD_FORCE_INLINE vint operator<< (const vint& a, const vint& b) { return vint{ shift_left_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator<< (const vint& a, int b) { return vint{ shift_left_int4(a.m_value, b) }; }
@@ -1245,17 +1883,19 @@ CPPSPMD_FORCE_INLINE vint operator>> (const vint& a, int b) { return vint{ shift
 CPPSPMD_FORCE_INLINE vint vuint_shift_right(const vint& a, int b) { return vint{ unsigned_shift_right_int4(a.m_value, b) }; }
 CPPSPMD_FORCE_INLINE vint operator>> (const vint& a, const vint& b) { return vint{ shift_right_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint vuint_shift_right(const vint& a, const vint& b) { return vint{ unsigned_shift_right_int4(a.m_value, b.m_value) }; }
+CPPSPMD_FORCE_INLINE vint vuint_shift_right_not_zero(const vint& a, const vint& b) { return vint{ unsigned_shift_right_int4(a.m_value, b.m_value) }; }
 
-CPPSPMD_FORCE_INLINE vint create_vint(const int4 &v) { return vint{ v }; }
+CPPSPMD_FORCE_INLINE vint byteswap(const vint& v) { return vint{ byteswap_int4(v.m_value) }; }
 
 #undef VINT_SHIFT_LEFT
 #undef VINT_SHIFT_RIGHT
 #undef VUINT_SHIFT_RIGHT
 
 // Shift left/right by a uniform immediate constant
-#define VINT_SHIFT_LEFT(a, b) CPPSPMD::create_vint( shift_left_int4((a).m_value, (b)) )
-#define VINT_SHIFT_RIGHT(a, b) CPPSPMD::create_vint( shift_right_int4((a).m_value, (b)) )
-#define VUINT_SHIFT_RIGHT(a, b) CPPSPMD::create_vint( unsigned_shift_right_int4((a).m_value, (b)) )
+#define VINT_SHIFT_LEFT(a, b) vint( shift_left_int4((a).m_value, (b)) )
+#define VINT_SHIFT_RIGHT(a, b) vint( shift_right_int4((a).m_value, (b)) )
+#define VUINT_SHIFT_RIGHT(a, b) vint( unsigned_shift_right_int4((a).m_value, (b)) )
+#define VINT_ROT(x, k) (VINT_SHIFT_LEFT((x), (k)) | VUINT_SHIFT_RIGHT((x), 32 - (k)))
 
 CPPSPMD_FORCE_INLINE vbool operator==(const lint& a, const lint& b) { return vbool{ cmp_eq_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vbool operator==(const lint& a, int b) { return vint(a) == vint(b); }
@@ -1276,12 +1916,87 @@ CPPSPMD_FORCE_INLINE bool extract(const vbool& v, int instance) { assert(instanc
 
 #define VINT_EXTRACT(v, instance) ((v).m_value.c[instance])
 #define VBOOL_EXTRACT(v, instance) ((v).m_value.c[instance])
-#define VFLOAT_EXTRACT(result, v, instance) ((v).m_value.c[instance])
+#define VFLOAT_EXTRACT(v, instance) ((v).m_value.c[instance])
 
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_return()
+CPPSPMD_FORCE_INLINE vfloat &insert(vfloat& v, int instance, float f)
 {
-	m_kernel_exec = andnot(m_exec, m_kernel_exec);
-	m_exec = exec_mask::all_off();
+	assert(instance < 4);
+	v.m_value.c[instance] = f;
+	return v;
+}
+
+CPPSPMD_FORCE_INLINE vint &insert(vint& v, int instance, int i)
+{
+	assert(instance < 4);
+	v.m_value.c[instance] = i;
+	return v;
+}
+
+CPPSPMD_FORCE_INLINE vint init_lookup4(const uint8_t pTab[16])
+{
+	return vint{ load_int4((const int*)pTab) };
+}
+
+CPPSPMD_FORCE_INLINE vint table_lookup4_8(const vint& a, const vint& table)
+{
+	return vint{ shuffle_epi8_int4(table.m_value, a.m_value) };
+}
+
+CPPSPMD_FORCE_INLINE void init_lookup5(const uint8_t pTab[32], vint& table_0, vint& table_1)
+{
+	int4 l = load_int4((const int*)pTab);
+	int4 h = load_int4((const int*)(pTab + 16));
+	table_0.m_value = l;
+	table_1.m_value = h;
+}
+
+CPPSPMD_FORCE_INLINE vint table_lookup5_8(const vint& a, const vint& table_0, const vint& table_1)
+{
+	int4 l_0 = shuffle_epi8_int4(table_0.m_value, a.m_value);
+	int4 h_0 = shuffle_epi8_int4(table_1.m_value, a.m_value);
+
+	int4 m_0 = shift_left_int4(a.m_value, 31 - 4);
+
+	int4 v_0 = blendv_int4(l_0, h_0, m_0);
+
+	return vint{ v_0 };
+}
+
+CPPSPMD_FORCE_INLINE void init_lookup6(const uint8_t pTab[64], vint& table_0, vint& table_1, vint& table_2, vint& table_3)
+{
+	int4 a = load_int4((const int*)pTab);
+	int4 b = load_int4((const int*)(pTab + 16));
+	int4 c = load_int4((const int*)(pTab + 32));
+	int4 d = load_int4((const int*)(pTab + 48));
+
+	table_0.m_value = a;
+	table_1.m_value = b;
+	table_2.m_value = c;
+	table_3.m_value = d;
+}
+
+CPPSPMD_FORCE_INLINE vint table_lookup6_8(const vint& a, const vint& table_0, const vint& table_1, const vint& table_2, const vint& table_3)
+{
+	int4 m_0 = shift_left_int4(a.m_value, 31 - 4);
+
+	int4 av_0;
+	{
+		int4 al_0 = shuffle_epi8_int4(table_0.m_value, a.m_value);
+		int4 ah_0 = shuffle_epi8_int4(table_1.m_value, a.m_value);
+		av_0 = blendv_int4(al_0, ah_0, m_0);
+	}
+
+	int4 bv_0;
+	{
+		int4 bl_0 = shuffle_epi8_int4(table_2.m_value, a.m_value);
+		int4 bh_0 = shuffle_epi8_int4(table_3.m_value, a.m_value);
+		bv_0 = blendv_int4(bl_0, bh_0, m_0);
+	}
+
+	int4 m2_0 = shift_left_int4(a.m_value, 31 - 5);
+	int4 v2_0 = blendv_int4(av_0, bv_0, m2_0);
+
+	return vint{ v2_0 };
 }
 
 template<typename SPMDKernel, typename... Args>
@@ -1295,7 +2010,6 @@ CPPSPMD_FORCE_INLINE decltype(auto) spmd_call(Args&&... args)
 CPPSPMD_FORCE_INLINE void spmd_kernel::init(const spmd_kernel::exec_mask& kernel_exec)
 {
 	m_exec = kernel_exec;
-	m_internal_exec = exec_mask::all_on();
 	m_kernel_exec = kernel_exec;
 	m_continue_mask = exec_mask::all_off();
 
@@ -1328,342 +2042,8 @@ CPPSPMD_FORCE_INLINE const float_vref& spmd_kernel::store_all(const float_vref&&
 	return dst;
 }
 
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_if_break(const vbool& cond)
-{
-#ifdef _DEBUG
-	assert(m_in_loop);
-#endif
-	
-	exec_mask cond_exec(cond);
-					
-	m_internal_exec = andnot(m_internal_exec & cond_exec, m_internal_exec);
-	m_exec = m_kernel_exec & m_internal_exec;
-}
-
-// No breaks, continues, etc. allowed
-template<typename IfBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_simple_if(const vbool& cond, const IfBody& ifBody)
-{
-	const exec_mask orig_exec = m_exec;
-
-	exec_mask im = m_exec & exec_mask(cond);
-
-	if (any(im))
-	{
-		m_exec = im;
-		ifBody();
-		m_exec = orig_exec;
-	}
-}
-
-// No breaks, continues, etc. allowed
-template<typename IfAnyBody, typename IfAllBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_simple_if_all(const vbool& cond, const IfAnyBody& ifAnyBody, const IfAllBody& ifAllBody)
-{
-	const exec_mask orig_exec = m_exec;
-
-	exec_mask im = m_exec & exec_mask(cond);
-
-	uint32_t mask = im.get_movemask();
-	if (mask == 0xF)
-	{
-		m_exec = im;
-		ifAllBody();
-		m_exec = orig_exec;
-	}
-	else if (mask != 0)
-	{
-		m_exec = im;
-		ifAnyBody();
-		m_exec = orig_exec;
-	}
-}
-
-// No breaks, continues, etc. allowed
-template<typename IfBody, typename ElseBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_simple_ifelse(const vbool& cond, const IfBody& ifBody, const ElseBody &elseBody)
-{
-	const exec_mask orig_exec = m_exec;
-
-	exec_mask im = m_exec & exec_mask(cond);
-
-	if (any(im))
-	{
-		m_exec = im;
-		ifBody();
-	}
-
-	exec_mask em = orig_exec & exec_mask(!cond);
-
-	if (any(em))
-	{
-		m_exec = em;
-		elseBody();
-	}
-		
-	m_exec = orig_exec;
-}
-
-template<typename IfBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_if(const vbool& cond, const IfBody& ifBody)
-{
-	exec_mask orig_internal_exec = m_internal_exec;
-
-	exec_mask cond_exec(cond);
-	exec_mask pre_if_internal_exec = m_internal_exec & cond_exec;
-
-	m_internal_exec = pre_if_internal_exec;
-	m_exec = m_exec & cond_exec;
-
-	if (any(m_exec))
-		ifBody();
-
-	m_internal_exec = andnot(pre_if_internal_exec ^ m_internal_exec, orig_internal_exec);
-	m_exec = m_kernel_exec & m_internal_exec;
-}
-
-template<typename IfAnyBody, typename IfAllBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_if_all(const vbool& cond, const IfAnyBody& ifAnyBody, const IfAllBody &ifAllBody)
-{
-	exec_mask orig_internal_exec = m_internal_exec;
-
-	exec_mask cond_exec(cond);
-	exec_mask pre_if_internal_exec = m_internal_exec & cond_exec;
-
-	m_internal_exec = pre_if_internal_exec;
-	m_exec = m_exec & cond_exec;
-
-	const uint32_t mask = m_exec.get_movemask();
-
-	if (mask == 0xF)
-		ifAllBody();
-	else if (mask != 0)
-		ifAnyBody();
-
-	m_internal_exec = andnot(pre_if_internal_exec ^ m_internal_exec, orig_internal_exec);
-	m_exec = m_kernel_exec & m_internal_exec;
-}
-
-template<typename IfBody, typename ElseBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_ifelse(const vbool& cond, const IfBody& ifBody, const ElseBody& elseBody)
-{
-	bool all_flag;
-
-	{
-		exec_mask cond_exec(cond), orig_internal_exec(m_internal_exec), pre_if_internal_exec = m_internal_exec & cond_exec;
-
-		m_internal_exec = pre_if_internal_exec;
-		m_exec = m_exec & cond_exec;
-
-		uint32_t mask = m_exec.get_movemask();
-		all_flag = (mask == 0xF);
-
-		if (mask != 0)
-			ifBody();
-
-		m_internal_exec = andnot(m_internal_exec ^ pre_if_internal_exec, orig_internal_exec);
-		m_exec = m_kernel_exec & m_internal_exec;
-	}
-
-	if (!all_flag)
-	{
-		exec_mask cond_exec(!cond), orig_internal_exec(m_internal_exec), pre_if_internal_exec = m_internal_exec & cond_exec;
-
-		m_internal_exec = pre_if_internal_exec;
-		m_exec = m_exec & cond_exec;
-
-		if (any(m_exec))
-			elseBody();
-
-		m_internal_exec = andnot(m_internal_exec ^ pre_if_internal_exec, orig_internal_exec);
-		m_exec = m_kernel_exec & m_internal_exec;
-	}
-}
-
-template<typename IfAnyBody, typename IfAllBody, typename ElseAnyBody, typename ElseAllBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_ifelse_all(const vbool& cond, 
-	const IfAnyBody& ifAnyBody, const IfAllBody& ifAllBody, 
-	const ElseAnyBody& elseAnyBody, const ElseAllBody& elseAllBody)
-{
-	bool all_flag;
-
-	{
-		exec_mask cond_exec(cond), orig_internal_exec(m_internal_exec), pre_if_internal_exec = m_internal_exec & cond_exec;
-
-		m_internal_exec = pre_if_internal_exec;
-		m_exec = m_exec & cond_exec;
-
-		uint32_t mask = m_exec.get_movemask();
-
-		all_flag = (mask == 0xF);
-		if (all_flag)
-			ifAllBody();
-		else if (mask != 0)
-			ifAnyBody();
-
-		m_internal_exec = andnot(m_internal_exec ^ pre_if_internal_exec, orig_internal_exec);
-		m_exec = m_kernel_exec & m_internal_exec;
-	}
-
-	if (!all_flag)
-	{
-		exec_mask cond_exec(!cond), orig_internal_exec(m_internal_exec), pre_if_internal_exec = m_internal_exec & cond_exec;
-
-		m_internal_exec = pre_if_internal_exec;
-		m_exec = m_exec & cond_exec;
-
-		uint32_t mask = m_exec.get_movemask();
-
-		if (mask == 0xF)
-			elseAllBody();
-		else if (mask != 0)
-			elseAnyBody();
-
-		m_internal_exec = andnot(m_internal_exec ^ pre_if_internal_exec, orig_internal_exec);
-		m_exec = m_kernel_exec & m_internal_exec;
-	}
-}
-
-template<typename IfAnyBody, typename IfAllBody, typename ElseAnyBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_ifelse_all(const vbool& cond, 
-	const IfAnyBody& ifAnyBody, const IfAllBody& ifAllBody, 
-	const ElseAnyBody& elseAnyBody)
-{
-	bool all_flag;
-
-	{
-		exec_mask cond_exec(cond), orig_internal_exec(m_internal_exec), pre_if_internal_exec = m_internal_exec & cond_exec;
-
-		m_internal_exec = pre_if_internal_exec;
-		m_exec = m_exec & cond_exec;
-
-		uint32_t mask = m_exec.get_movemask();
-
-		all_flag = (mask == 0xF);
-		if (all_flag)
-			ifAllBody();
-		else if (mask != 0)
-			ifAnyBody();
-
-		m_internal_exec = andnot(m_internal_exec ^ pre_if_internal_exec, orig_internal_exec);
-		m_exec = m_kernel_exec & m_internal_exec;
-	}
-
-	if (!all_flag)
-	{
-		exec_mask cond_exec(!cond), orig_internal_exec(m_internal_exec), pre_if_internal_exec = m_internal_exec & cond_exec;
-
-		m_internal_exec = pre_if_internal_exec;
-		m_exec = m_exec & cond_exec;
-
-		if (any(m_exec))
-			elseAnyBody();
-
-		m_internal_exec = andnot(m_internal_exec ^ pre_if_internal_exec, orig_internal_exec);
-		m_exec = m_kernel_exec & m_internal_exec;
-	}
-}
-
-struct scoped_exec_restorer
-{
-	exec_mask *m_pMask;
-	exec_mask m_prev_mask;
-	CPPSPMD_FORCE_INLINE scoped_exec_restorer(exec_mask *pExec_mask) : m_pMask(pExec_mask), m_prev_mask(*pExec_mask) { }
-	CPPSPMD_FORCE_INLINE ~scoped_exec_restorer() { *m_pMask = m_prev_mask; }
-};
-
-#undef SPMD_SIMPLE_IF
-#undef SPMD_SIMPLE_ELSE
-#undef SPMD_SIMPLE_END_IF
-
-// Cannot use break, continue, or return inside if/else
-#define SPMD_SIMPLE_IF(cond) exec_mask CPPSPMD_GLUER2(_exec_temp, __LINE__)(m_exec & exec_mask(vbool(cond))); if (any(CPPSPMD_GLUER2(_exec_temp, __LINE__))) { CPPSPMD::scoped_exec_restorer CPPSPMD_GLUER2(_exec_restore_, __LINE__)(&m_exec); m_exec = CPPSPMD_GLUER2(_exec_temp, __LINE__);
-#define SPMD_SIMPLE_ELSE(cond) } exec_mask CPPSPMD_GLUER2(_exec_temp, __LINE__)(m_exec & exec_mask(!vbool(cond))); if (any(CPPSPMD_GLUER2(_exec_temp, __LINE__))) { CPPSPMD::scoped_exec_restorer CPPSPMD_GLUER2(_exec_restore_, __LINE__)(&m_exec); m_exec = CPPSPMD_GLUER2(_exec_temp, __LINE__);
-#define SPMD_SIMPLE_END_IF }
-
-struct scoped_exec_restorer2
-{
-	spmd_kernel *m_pKernel;
-	exec_mask m_orig_internal_mask;
-	exec_mask m_pre_if_internal_exec;
-		
-	CPPSPMD_FORCE_INLINE scoped_exec_restorer2(spmd_kernel *pKernel, const vbool &cond) : 
-		m_pKernel(pKernel), 
-		m_orig_internal_mask(pKernel->m_internal_exec)
-	{ 
-		exec_mask cond_exec(cond);
-		m_pre_if_internal_exec = pKernel->m_internal_exec & cond_exec;
-		pKernel->m_internal_exec = m_pre_if_internal_exec;
-		pKernel->m_exec = pKernel->m_exec & cond_exec;
-	}
-
-	CPPSPMD_FORCE_INLINE ~scoped_exec_restorer2() 
-	{ 
-		m_pKernel->m_internal_exec = andnot(m_pre_if_internal_exec ^ m_pKernel->m_internal_exec, m_orig_internal_mask);
-		m_pKernel->m_exec = m_pKernel->m_kernel_exec & m_pKernel->m_internal_exec;
-	}
-};
-
-#undef SPMD_IF
-#undef SPMD_ELSE
-#undef SPMD_END_IF
-
-#define SPMD_IF(cond) { CPPSPMD::scoped_exec_restorer2 CPPSPMD_GLUER2(_exec_restore2_, __LINE__)(this, vbool(cond)); if (any(m_exec)) {
-#define SPMD_ELSE(cond) } } { CPPSPMD::scoped_exec_restorer2 CPPSPMD_GLUER2(_exec_restore2_, __LINE__)(this, !vbool(cond)); if (any(m_exec)) {
-#define SPMD_END_IF } }
-
-template<typename ForeachBody>
-CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_foreach(int begin, int end, const ForeachBody& foreachBody)
-{
-	if (begin == end)
-		return;
-	
-	if (!any(m_exec))
-		return;
-
-	// We don't support iterating backwards.
-	if (begin > end)
-		std::swap(begin, end);
-
-	exec_mask prev_continue_mask = m_continue_mask, prev_internal_exec = m_internal_exec;
-		
-	m_continue_mask = exec_mask::all_off();
-
-	int total_full = (end - begin) / PROGRAM_COUNT;
-	int total_partial = (end - begin) % PROGRAM_COUNT;
-
-	lint loop_index = begin + program_index;
-	
-	const int total_loops = total_full + (total_partial ? 1 : 0);
-
-	for (int i = 0; i < total_loops; i++)
-	{
-		if (!any(m_exec))
-			break;
-
-		int n = PROGRAM_COUNT;
-		if ((i == (total_loops - 1)) && (total_partial))
-		{
-			exec_mask partial_mask = exec_mask{ cmp_gt_int4(set1_int4(total_partial), program_index.m_value) };
-			m_internal_exec = m_internal_exec & partial_mask;
-			m_exec = m_exec & partial_mask;
-			n = total_partial;
-		}
-
-		foreachBody(loop_index, n);
-
-		m_internal_exec = m_internal_exec | m_continue_mask;
-		m_exec = m_internal_exec & m_kernel_exec;
-		m_continue_mask = exec_mask::all_off();
-
-		loop_index.m_value = (loop_index + PROGRAM_COUNT).m_value;
-	}
-
-	m_internal_exec = prev_internal_exec;
-	m_exec = m_internal_exec & m_kernel_exec;
-
-	m_continue_mask = prev_continue_mask;
-}
+#include "cppspmd_flow.h"
+#include "cppspmd_math.h"
 
 } // namespace cppspmd_float4
 
