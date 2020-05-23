@@ -12,7 +12,7 @@ References:
 
 [Original CppSPMD project](https://github.com/nlguillemot/CppSPMD)
 
-Here's a CppSPMD BC1 encoding example:
+Here's a CppSPMD BC1 encoding example (written for an earlier version of CppSPMD_Fast - I'll be updating this next):
 
 https://pastebin.com/xaACX3Th
 
