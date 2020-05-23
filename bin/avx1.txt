@@ -2376,3 +2376,38 @@ case 0 active lanes:
 case 1 active lanes: 1 
 case 99 active lanes: 
 default active lanes: 2 4 5 6 7 
+SPMD_FOREACH 0-8:
+0 1 2 3 4 5 6 7 
+active lanes: 0 1 2 3 4 5 6 7 
+SPMD_FOREACH 0-3:
+0 1 2 3 4 5 6 7 
+active lanes: 0 1 2 
+SPMD_FOREACH 0-1:
+0 1 2 3 4 5 6 7 
+active lanes: 0 
+SPMD_FOREACH 0-17:
+0 1 2 3 4 5 6 7 
+active lanes: 0 1 2 3 4 5 6 7 
+8 9 10 11 12 13 14 15 
+active lanes: 0 1 2 3 4 5 6 7 
+16 17 18 19 20 21 22 23 
+active lanes: 0 
+SPMD_FOREACH 0-9:
+0 1 2 3 4 5 6 7 
+active lanes: 0 1 2 3 4 5 6 7 
+8 9 10 11 12 13 14 15 
+active lanes: 0 
+SPMD_FOREACH 5-7:
+5 6 7 8 9 10 11 12 
+active lanes: 0 1 
+SPMD_FOREACH 17-0 with spmd_break():
+0 1 2 3 4 5 6 7 
+active lanes: 0 1 2 3 4 5 6 7 
+Nested outer SPMD_FOREACH 0-7:
+0 1 2 3 4 5 6 7 
+outer active lanes: 0 1 2 3 4 5 6 
+Inner SPMD_FOREACH 5-16:
+5 6 7 8 9 10 11 12 
+inner active lanes: 0 1 2 3 4 5 6 
+13 14 15 16 17 18 19 20 
+inner active lanes: 0 1 2 

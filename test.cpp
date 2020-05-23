@@ -553,27 +553,6 @@ struct Ray {
 	int hitId;
 };
 
-#if 0
-// Declare these in a namespace so the mangling matches
-namespace ispc {
-	struct Triangle {
-		float p[3][4]; // extra float pad after each vertex
-		int32_t id;
-		int32_t pad[3]; // make 16 x 32-bits
-	};
-
-	struct LinearBVHNode {
-		float bounds[2][3];
-		int32_t offset; // primitives for leaf, second child for interior
-		uint8_t nPrimitives;
-		uint8_t splitAxis;
-		uint16_t pad;
-	};
-} // namespace ispc
-
-using namespace ispc;
-#endif
-
 inline float3 Cross(const float3& v1, const float3& v2) {
 	float v1x = v1.x, v1y = v1.y, v1z = v1.z;
 	float v2x = v2.x, v2y = v2.y, v2z = v2.z;
@@ -978,7 +957,6 @@ int test_simple()
 
     return 0;
 }
-
 
 //------------------------------------------------------------------------------------------------
 

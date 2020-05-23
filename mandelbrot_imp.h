@@ -37,81 +37,70 @@ using namespace CPPSPMD;
 namespace CPPSPMD_NAME(mandel_kernel_namespace)
 {
 
-struct mandel : spmd_kernel
-{
-	vint_t _call(const vfloat & c_re, const vfloat & c_im, const vint_t & count);
-};
-
 struct mandelbrot_kernel : spmd_kernel
 {
+	inline vint_t mandel(const vfloat & c_re, const vfloat & c_im, const vint_t & count)
+	{
+		vfloat z_re = c_re, z_im = c_im;
+
+		vint_t i = 0;
+		SPMD_WHILE(i < count)
+		{
+			spmd_if_break(vfma(z_re, z_re, z_im * z_im) > 4.0f);
+
+			vfloat new_re = vfms(z_re, z_re, z_im * z_im);
+			vfloat new_im = 2.f * z_re * z_im;
+
+			store_all(z_re, c_re + new_re);
+			store_all(z_im, c_im + new_im);
+
+			store(i, i + 1);
+		}
+		SPMD_WEND
+
+		return i;
+	}
+
 	void _call(
 		float x0, float y0,
 		float x1, float y1,
 		int width, int height,
 		int maxIterations,
-		int output[]);
-};
-
-mandel::vint_t mandel::_call(const vfloat & c_re, const vfloat & c_im, const vint_t & count)
-{
-	vfloat z_re = c_re, z_im = c_im;
-
-	vint_t i = 0;
-	SPMD_WHILE(i < count)
+		int output[])
 	{
-		spmd_if_break(vfma(z_re, z_re, z_im * z_im) > 4.0f);
+		float dx = (x1 - x0) / width;
+		float dy = (y1 - y0) / height;
 
-		vfloat new_re = vfms(z_re, z_re, z_im * z_im);
-		vfloat new_im = 2.f * z_re * z_im;
+		for (int j = 0; j < height; j++) 
+		{
+			// Note that we'll be doing programCount computations in parallel,
+			// so increment i by that much.  This assumes that width evenly
+			// divides programCount.
+			SPMD_FOREACH(orig_index, 0, width)
+			{
+				// Figure out the position on the complex plane to compute the
+				// number of iterations at.  Note that the x values are
+				// different across different program instances, since its
+				// initializer incorporates the value of the programIndex
+				// variable.
+				vfloat x = x0 + orig_index * dx;
+				vfloat y = y0 + j * dy;
 
-		store_all(z_re, c_re + new_re);
-		store_all(z_im, c_im + new_im);
+	#if CPPSPMD_INT16
+				int* p = output + orig_index.get_first_value() + j * width;
+				lint_t index = program_index;
 
-		store(i, i + 1);
+				store((vint_t(index) * 2)[(int16_t*)p], mandel(x, y, maxIterations));
+				store((vint_t(index) * 2 + 1)[(int16_t*)p], vint_t(0));
+	#else
+				lint_t index = j * width + orig_index;
+				store(index[output], mandel(x, y, maxIterations));
+	#endif
+			}
+			SPMD_FOREACH_END(orig_index);
+		}
 	}
-	SPMD_WEND
-
-	return i;
-}
-
-void mandelbrot_kernel::_call(
-	float x0, float y0,
-	float x1, float y1,
-	int width, int height,
-	int maxIterations,
-	int output[])
-{
-	float dx = (x1 - x0) / width;
-	float dy = (y1 - y0) / height;
-
-	for (int j = 0; j < height; j++) {
-		// Note that we'll be doing programCount computations in parallel,
-		// so increment i by that much.  This assumes that width evenly
-		// divides programCount.
-		spmd_foreach(0, width, [&](const lint_t& orig_index, int pcount) {
-			(void)pcount;
-
-			// Figure out the position on the complex plane to compute the
-			// number of iterations at.  Note that the x values are
-			// different across different program instances, since its
-			// initializer incorporates the value of the programIndex
-			// variable.
-			vfloat x = x0 + orig_index * dx;
-			vfloat y = y0 + j * dy;
-
-#if CPPSPMD_INT16
-			int* p = output + orig_index.get_first_value() + j * width;
-			lint_t index = program_index;
-
-			store((vint_t(index) * 2)[(int16_t*)p], spmd_call<mandel>(x, y, maxIterations));
-			store((vint_t(index) * 2 + 1)[(int16_t*)p], vint_t(0));
-#else
-			lint_t index = j * width + orig_index;
-			store(index[output], spmd_call<mandel>(x, y, maxIterations));
-#endif
-			});
-	}
-}
+};
 
 } // namespace
 

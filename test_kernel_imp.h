@@ -199,49 +199,6 @@ bool test_kernel::_call(FILE* p)
 	int_t cv[MAX_LANES] = { 1, 1, 6, -14, -100, 2, 5, 100,  1, 1, 6, -14, -100, 2, 5, 100 };
 	vint_t c = loadu_linear(cv);
 
-
-#if CPPSPMD_SSE41
-	{
-		CPPSPMD_DECL(const uint32_t, s_fp_and_mask[4]) = { 0xFFFFFFFF, 0x0000FFFF, 0xFFFFFFFF, 0x0000FFFF };
-		CPPSPMD_DECL(const uint32_t, s_fp_or_mask[4]) = { 0x00000000, 0x43300000, 0x00000000, 0x43300000 };
-
-		const __m128i and_mask = _mm_load_si128((const __m128i *)s_fp_and_mask), or_mask = _mm_load_si128((const __m128i *)s_fp_or_mask);
-
-		uint8_t test_pat[16] = { 0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE,   0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE }; 
-
-		const int *pBitstreams = (const int *)test_pat;
-		vint byte_ofs0(0);
-
-		__m128i l0i = _mm_undefined_si128(), h0i = _mm_undefined_si128();			
-		l0i = _mm_insert_epi64(l0i, *(const uint64_t *)((const uint8_t *)pBitstreams + extract_x(byte_ofs0.m_value)), 0);
-		l0i = _mm_insert_epi64(l0i, *(const uint64_t *)((const uint8_t *)pBitstreams + extract_y(byte_ofs0.m_value)), 1);
-		h0i = _mm_insert_epi64(h0i, *(const uint64_t *)((const uint8_t *)pBitstreams + extract_z(byte_ofs0.m_value)), 0);
-		h0i = _mm_insert_epi64(h0i, *(const uint64_t *)((const uint8_t *)pBitstreams + extract_w(byte_ofs0.m_value)), 1);
-
-		l0i = _mm_and_si128(l0i, and_mask);
-		l0i = _mm_or_si128(l0i, or_mask);
-
-		h0i = _mm_and_si128(h0i, and_mask);
-		h0i = _mm_or_si128(h0i, or_mask);
-
-		vint fetched_bits_to_skip0 = 1 - 42;
-
-		__m128i fetched_bits_to_skip0_l = _mm_slli_epi64(_mm_cvtepi32_epi64(fetched_bits_to_skip0.m_value), 52);
-		__m128i fetched_bits_to_skip0_h = _mm_slli_epi64(_mm_cvtepi32_epi64(_mm_unpackhi_epi64(fetched_bits_to_skip0.m_value, fetched_bits_to_skip0.m_value)), 52);
-
-		l0i = _mm_add_epi64(l0i, fetched_bits_to_skip0_l);
-		h0i = _mm_add_epi64(h0i, fetched_bits_to_skip0_h);
-
-		vint bit_buf0(_mm_unpacklo_epi64(_mm_cvttpd_epi32(l0i), _mm_cvttpd_epi32(h0i)));
-
-
-		print_vint_hex(vint(l0i));
-		print_vint_hex(vint(h0i));
-	}
-
-#endif
-
-
 #if !CPPSPMD_INT16
 	{
 		rand_context z1;
@@ -1496,6 +1453,81 @@ bool test_kernel::_call(FILE* p)
 		SPMD_SASELECT_END
 	}
 	SPMD_SENDIF
+
+	fprintf(pFile, "SPMD_FOREACH 0-8:\n");
+	SPMD_FOREACH(loop_index, 0, 8)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	fprintf(pFile, "SPMD_FOREACH 0-3:\n");
+	SPMD_FOREACH(loop_index, 0, 3)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	fprintf(pFile, "SPMD_FOREACH 0-1:\n");
+	SPMD_FOREACH(loop_index, 0, 1)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	fprintf(pFile, "SPMD_FOREACH 0-17:\n");
+	SPMD_FOREACH(loop_index, 0, 17)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	fprintf(pFile, "SPMD_FOREACH 0-9:\n");
+	SPMD_FOREACH(loop_index, 0, 9)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	fprintf(pFile, "SPMD_FOREACH 5-7:\n");
+	SPMD_FOREACH(loop_index, 5, 7)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	fprintf(pFile, "SPMD_FOREACH 17-0 with spmd_break():\n");
+	SPMD_FOREACH(loop_index, 17, 0)
+	{
+		print_vint(vint_t(loop_index));
+		print_active_lanes("active lanes: ");
+		spmd_break();
+	}
+	SPMD_FOREACH_END(loop_index);
+
+	// We don't support nested SPMD_FOREACH, but let's make sure it compiles anyway.
+	fprintf(pFile, "Nested outer SPMD_FOREACH 0-7:\n");
+	SPMD_FOREACH(loop_index1, 0, 7)
+	{
+		print_vint(vint_t(loop_index1));
+		print_active_lanes("outer active lanes: ");
+
+		fprintf(pFile, "Inner SPMD_FOREACH 5-16:\n");
+			
+		SPMD_FOREACH(loop_index2, 5, 16)
+		{
+			print_vint(vint_t(loop_index2));
+			print_active_lanes("inner active lanes: ");
+		}
+		SPMD_FOREACH_END(loop_index2);
+	}
+	SPMD_FOREACH_END(loop_index1);
 
 	return succeeded;
 }

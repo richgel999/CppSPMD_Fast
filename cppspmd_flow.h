@@ -72,7 +72,7 @@ CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_if_break(const vbool& cond)
 	check_masks();
 }
 
-// No breaks, continues, etc. allowed
+// No SPMD breaks, continues, etc. allowed
 template<typename IfBody>
 CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_sif(const vbool& cond, const IfBody& ifBody)
 {
@@ -87,7 +87,7 @@ CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_sif(const vbool& cond, const IfBody&
 	}
 }
 
-// No breaks, continues, etc. allowed
+// No SPMD breaks, continues, etc. allowed
 template<typename IfBody, typename ElseBody>
 CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_sifelse(const vbool& cond, const IfBody& ifBody, const ElseBody &elseBody)
 {
@@ -187,7 +187,7 @@ struct scoped_exec_restorer
 	CPPSPMD_FORCE_INLINE ~scoped_exec_restorer() { *m_pMask = m_prev_mask; }
 };
 
-// Cannot use break, continue, or return inside "simple" if/else
+// Cannot use SPMD break, continue, or return inside "simple" if/else
 #define SPMD_SIF(cond) exec_mask CPPSPMD_GLUER2(_exec_temp, __LINE__)(m_exec & exec_mask(vbool(cond))); if (any(CPPSPMD_GLUER2(_exec_temp, __LINE__))) \
 	{ CPPSPMD::scoped_exec_restorer CPPSPMD_GLUER2(_exec_restore_, __LINE__)(&m_exec); m_exec = CPPSPMD_GLUER2(_exec_temp, __LINE__);
 
@@ -214,7 +214,7 @@ struct scoped_exec_restorer
 
 #define SPMD_SAENDIF }
 
-// Cannot use break, continue, or return inside sselect
+// Cannot use SPMD break, continue, or return inside sselect
 #define SPMD_SSELECT(var)		do { vint_t _select_var = var; scoped_exec_restorer _orig_exec(&m_exec); exec_mask _select_executed(exec_mask::all_off());
 #define SPMD_SCASE(value)		exec_mask CPPSPMD_GLUER2(_exec_temp, __LINE__)(_orig_exec.m_prev_mask & exec_mask(vbool(_select_var == (value)))); if (any(CPPSPMD_GLUER2(_exec_temp, __LINE__))) \
 	{ m_exec = CPPSPMD_GLUER2(_exec_temp, __LINE__); _select_executed = _select_executed | m_exec;
@@ -226,7 +226,7 @@ struct scoped_exec_restorer
 #define SPMD_SSELECT_END		} while(0);
 
 // Same as SPMD_SSELECT, except all cases are executed.
-// Cannot use break, continue, or return inside sselect
+// Cannot use SPMD break, continue, or return inside sselect
 #define SPMD_SASELECT(var)		do { vint_t _select_var = var; scoped_exec_restorer _orig_exec(&m_exec); exec_mask _select_executed(exec_mask::all_off());
 
 #define SPMD_SACASE(value)		exec_mask CPPSPMD_GLUER2(_exec_temp, __LINE__)(_orig_exec.m_prev_mask & exec_mask(vbool(_select_var == (value)))); { m_exec = CPPSPMD_GLUER2(_exec_temp, __LINE__); \
@@ -426,6 +426,16 @@ struct scoped_while_restorer
 
 #define SPMD_WEND m_exec = m_exec | m_continue_mask; m_continue_mask = exec_mask::all_off(); check_masks(); } }
 
+// Nesting is not supported (although it will compile, but the results won't make much sense).
+#define SPMD_FOREACH(loop_var, bi, ei) if (((bi) != (ei)) && (any(m_exec))) { \
+	scoped_while_restorer CPPSPMD_GLUER2(_while_restore_, __LINE__)(this); \
+	uint32_t b = (uint32_t)(bi), e = (uint32_t)(ei); if ((b) > (e)) { std::swap(b, e); } const uint32_t total_full = ((e) - (b)) >> PROGRAM_COUNT_SHIFT, total_partial = ((e) - (b)) & (PROGRAM_COUNT - 1); \
+	lint_t loop_var = program_index + (b); const uint32_t total_loops = total_full + (total_partial ? 1U : 0U); \
+	for (uint32_t CPPSPMD_GLUER2(_foreach_counter, __LINE__) = 0; CPPSPMD_GLUER2(_foreach_counter, __LINE__) < total_loops; ++CPPSPMD_GLUER2(_foreach_counter, __LINE__)) { \
+		if ((CPPSPMD_GLUER2(_foreach_counter, __LINE__) == (total_loops - 1)) && (total_partial)) { exec_mask partial_mask = exec_mask(vint_t((int)total_partial) > vint_t(program_index)); m_exec = m_exec & partial_mask; }
+
+#define SPMD_FOREACH_END(loop_var) m_exec = m_exec | m_continue_mask; if (!any(m_exec)) break; m_continue_mask = exec_mask::all_off(); check_masks(); store_all(loop_var, loop_var + PROGRAM_COUNT); } }
+
 struct scoped_simple_while_restorer
 {
 	spmd_kernel* m_pKernel;
@@ -455,11 +465,14 @@ struct scoped_simple_while_restorer
 	}
 };
 
+// Cannot use SPMD break, continue, or return inside simple while
+
 #define SPMD_SWHILE(cond) { scoped_simple_while_restorer CPPSPMD_GLUER2(_while_restore_, __LINE__)(this); \
 	while(true) { \
 		exec_mask CPPSPMD_GLUER2(cond_exec, __LINE__) = exec_mask(vbool(cond)); m_exec = m_exec & CPPSPMD_GLUER2(cond_exec, __LINE__); if (!any(m_exec)) break;
 #define SPMD_SWEND } }	
 
+// Cannot use SPMD break, continue, or return inside simple do
 #define SPMD_SDO { scoped_simple_while_restorer CPPSPMD_GLUER2(_while_restore_, __LINE__)(this); while(true) {
 #define SPMD_SEND_DO(cond) exec_mask CPPSPMD_GLUER2(cond_exec, __LINE__) = exec_mask(vbool(cond)); m_exec = m_exec & CPPSPMD_GLUER2(cond_exec, __LINE__); if (!any(m_exec)) break; } }	
 
