@@ -1,4 +1,7 @@
 #if !defined(_MSC_VER)
+#if __AVX__ || __AVX2__ || __AVX512F__
+#error Please check your compiler options
+#endif
 #if !__SSE4_1__ || !__SSE3__ || __SSE4_2__ || !__SSSE3__
 #error Please check your compiler options
 #endif

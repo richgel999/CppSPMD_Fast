@@ -1,4 +1,7 @@
 #if !defined(_MSC_VER)
+#if !__AVX__
+#error Please check your compiler options
+#endif
 #if __AVX2__
 #error Please check your compiler options
 #endif
