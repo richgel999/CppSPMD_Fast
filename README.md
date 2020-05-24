@@ -22,10 +22,13 @@ SSE operations must be used for most integer ops in AVX1, and there are multiple
 
 Common headers (don't include them directly), used by all the headers above except for cppspmd_int16_avx2_fma.h:
 
-- cppspmd_math.h: Math/trig/helper library. Contains approximations for log/log2, exp/exp2, pow, tan, atan/atan2, reciprocal estimate, and reciprocal square root estimate.  Importantly, all vectorized math approximation functions are completely implemented in CppSPMD itself, not using raw intrinsics, so they are portable between vector instruction sets and will generate the same results with all headers (ignoring differences due to FMA3 usage). Also contains a simple SPMD random number generator, reverse bits, count leading/trailing zeros, and count set bits helpers. 
+- cppspmd_math.h: Math/trig/helper library. Contains approximations for log/log2, exp/exp2, pow, tan, atan/atan2, reciprocal estimate, and reciprocal square root estimate.  Importantly, all vectorized math approximation functions are completely implemented in CppSPMD itself, not using raw intrinsics, so they are portable between vector instruction sets and will generate the same results with all headers (ignoring differences due to FMA3 usage). 
+Also contains a simple SPMD random number generator, reverse bits, count leading/trailing zeros, and count set bits helpers. 
 - cppspmd_math_declares.h: Declares for the math library.
 - cppspmd_sincos.h: Vectorized sin/cos ported from Microsoft's MIT licensed DirectXMath project. (This is currently the only code ported from DirectXMath, which falls under Microsoft's MIT license.)
 - cppspmd_flow.h: All SPMD flow control functionality is here. Contains the original CppSPMD project's lambda-based flow control (with some bug fixes/improvements), along with the new and more efficient macro-based flow control. Compared to the original CppSPMD project, CppSPMD_fast uses one less execution mask. (The "internal" mask has been removed as it was unnecessary.)
+
+One of the key design goals of CppSPMD_Fast: If you faithfully port the core CppSPMD header to a new vector instruction set, you automatically get the vectorized math/trig operations and SPMD flow control for that instruction set.
 
 References:
 -----------
