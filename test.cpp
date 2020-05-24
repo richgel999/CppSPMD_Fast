@@ -1424,7 +1424,7 @@ int test_ao()
     }
 
     // Report more results, save another image...
-    printf("[aobench serial]:\t\t[%.3f] million cycles (%d x %d image)\n", minTimeSerial, width, height);
+    printf("[aobench serial]:\t\t[%.3f] secs (%d x %d image)\n", minTimeSerial, width, height);
     printf("\t\t\t\t(%.2fx speedup from SIMD)\n", minTimeSerial / minTimeSIMD);
     savePPM("ao-serial.ppm", width, height);
 
