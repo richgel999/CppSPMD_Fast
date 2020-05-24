@@ -30,7 +30,12 @@ inline vfloat spmd_kernel::mod_angles(vfloat a)
 {
 	const float fOneOverTwoPi = 0.159154943f;
 	const float fTwoPi = 6.283185307f;
-	return vfnma(fTwoPi, round_nearest(a * fOneOverTwoPi), a);
+			
+	vfloat r = round_nearest(a * fOneOverTwoPi);
+	
+	vfloat result = vfnma(fTwoPi, r, a);
+	
+	return result;
 }
 
 /*
@@ -110,13 +115,19 @@ inline vfloat spmd_kernel::cos_est(vfloat a)
 	const float fCos1_X = -2.6051615e-07f;// , fCos1_Y = -0.49992746f /*Est1*/, fCos1_Z = +0.041493919f /*Est2*/, fCos1_W = -0.0012712436f /*Est3*/;
 
 	vfloat x = mod_angles(a);
+	
 	vint signi = cast_vfloat_to_vint(x) & 0x80000000;
+		
 	vfloat c = cast_vint_to_vfloat(signi | cast_vfloat_to_vint(fPi));
+
 	vfloat absx = cast_vint_to_vfloat(andnot(signi, cast_vfloat_to_vint(x)));
+
 	vfloat rflx = c - x;
 
 	vbool comp = (absx <= fHalfPi);
+		
 	store_all(x, spmd_ternaryf(comp, x, rflx));
+
 	vfloat sign = spmd_ternaryf(comp, 1.0f, -1.0f);
 
 	vfloat x2 = x * x;

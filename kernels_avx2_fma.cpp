@@ -36,3 +36,6 @@
 
 #include "options_imp.h"
 #include "options_declares.h"
+
+#include "ao_bench_declares.h"
+#include "ao_bench_imp.h"

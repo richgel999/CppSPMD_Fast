@@ -48,6 +48,9 @@
     <ClCompile Include="kernels_sse41.cpp">
       <Filter>Source Files\kernels</Filter>
     </ClCompile>
+    <ClCompile Include="ao_serial.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cppspmd_avx1.h">
@@ -123,6 +126,12 @@
       <Filter>Source Files\kernels</Filter>
     </ClInclude>
     <ClInclude Include="options_declares.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="ao_bench_imp.h">
+      <Filter>Source Files\kernels</Filter>
+    </ClInclude>
+    <ClInclude Include="ao_bench_declares.h">
       <Filter>Source Files\kernels</Filter>
     </ClInclude>
   </ItemGroup>

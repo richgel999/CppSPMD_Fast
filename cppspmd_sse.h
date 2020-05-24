@@ -1391,19 +1391,44 @@ CPPSPMD_FORCE_INLINE vfloat ceil(const vfloat& a)
 	return vfloat{ blendv_mask_ps(a.m_value, af, _mm_castsi128_ps(has_fractional)) };
 }
 
+// We need to disable unsafe math optimizations for the key operations used for rounding to nearest.
+// I wish there was a better way.
+#if defined(__GNUC__) && !defined(__INTEL_COMPILER) && !defined(__clang__)
+inline __m128 add_sub(__m128 a, __m128 b) __attribute__((optimize("-fno-unsafe-math-optimizations")))
+#elif defined(__clang__)
+inline __m128 add_sub(__m128 a, __m128 b) __attribute__((optnone))
+#elif defined (_MSC_VER)
+#pragma float_control(push)
+#pragma float_control(precise, on)
+inline __m128 add_sub(__m128 a, __m128 b)
+#else
+inline __m128 add_sub(__m128 a, __m128 b)
+#endif
+{
+	return _mm_sub_ps(_mm_add_ps(a, b), b);
+}
+
+#if defined (_MSC_VER)
+#pragma float_control(pop)
+#endif
+
 CPPSPMD_FORCE_INLINE vfloat round_nearest(const vfloat& a)
 {
 	__m128i no_fract_fp_bits = _mm_castps_si128(_mm_set1_ps(8388608.0f));
 
 	__m128i sign_a = _mm_and_si128(_mm_castps_si128(a.m_value), _mm_set1_epi32(0x80000000U));
 	__m128 force_int = _mm_castsi128_ps(_mm_or_si128(no_fract_fp_bits, sign_a));
-	__m128 temp1 = _mm_add_ps(a.m_value, force_int);
-	__m128 temp2 = _mm_sub_ps(temp1, force_int);
+	
+	// Can't use individual _mm_add_ps/_mm_sub_ps - this will be optimized out with /fp:fast by clang and probably other compilers.
+	//__m128 temp1 = _mm_add_ps(a.m_value, force_int);
+	//__m128 temp2 = _mm_sub_ps(temp1, force_int);
+	__m128 temp2 = add_sub(a.m_value, force_int);
 	
 	__m128i abs_a = _mm_and_si128(_mm_castps_si128(a.m_value), _mm_set1_epi32(0x7FFFFFFFU));
 	__m128i has_fractional = _mm_cmplt_epi32(abs_a, no_fract_fp_bits);
 	return vfloat{ blendv_mask_ps(a.m_value, temp2, _mm_castsi128_ps(has_fractional)) };
 }
+
 #else
 CPPSPMD_FORCE_INLINE vfloat floor(const vfloat& v) { return vfloat{ _mm_floor_ps(v.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat ceil(const vfloat& a) { return vfloat{ _mm_ceil_ps(a.m_value) }; }

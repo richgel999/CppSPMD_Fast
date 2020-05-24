@@ -33,6 +33,9 @@ inline vfloat cos_est(vfloat a);
 // Don't call with values <= 0.
 CPPSPMD_FORCE_INLINE vfloat rsqrt_est1(vfloat x0);
 
+// Don't call with values <= 0.
+CPPSPMD_FORCE_INLINE vfloat rsqrt_est2(vfloat x0);
+
 CPPSPMD_FORCE_INLINE vfloat atan2_est(vfloat y, vfloat x);
 
 CPPSPMD_FORCE_INLINE vfloat atan_est(vfloat x) { return atan2_est(x, vfloat(1.0f)); }
@@ -63,3 +66,10 @@ CPPSPMD_FORCE_INLINE vint count_leading_zeros_alt(vint x);
 CPPSPMD_FORCE_INLINE vint count_trailing_zeros(vint x);
 
 CPPSPMD_FORCE_INLINE vint count_set_bits(vint x);
+
+void print_vint(vint v);
+void print_vbool(vbool v);
+void print_vint_hex(vint v);
+void print_active_lanes(const char *pPrefix);
+void print_vfloat(vfloat v);
+

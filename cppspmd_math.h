@@ -367,6 +367,15 @@ CPPSPMD_FORCE_INLINE vfloat spmd_kernel::rsqrt_est1(vfloat x0)
 	return x * vfnma(xhalf * x, x, 1.5008909f);
 }
 
+CPPSPMD_FORCE_INLINE vfloat spmd_kernel::rsqrt_est2(vfloat x0)
+{
+	vfloat xhalf = 0.5f * x0;
+	vfloat x = cast_vint_to_vfloat(vint(0x5F37599E) - (VINT_SHIFT_RIGHT(cast_vfloat_to_vint(x0), 1)));
+	vfloat x1 = x * vfnma(xhalf * x, x, 1.5);
+	vfloat x2 = x1 * vfnma(xhalf * x1, x1, 1.5);
+	return x2;
+}
+
 // Math from: http://developer.download.nvidia.com/cg/atan2.html
 // TODO: Needs more validation, parameter checking.
 CPPSPMD_FORCE_INLINE vfloat spmd_kernel::atan2_est(vfloat y, vfloat x)
@@ -657,3 +666,47 @@ CPPSPMD_FORCE_INLINE vint cmple_epi16(const vint &a, const vint &b)
 	return cmpge_epi16(b, a);
 }
 
+void spmd_kernel::print_vint(vint v) 
+{ 
+	for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+		printf("%i ", extract(v, i)); 
+	printf("\n"); 
+}
+
+void spmd_kernel::print_vbool(vbool v) 
+{ 
+	for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+		printf("%i ", extract(v, i) ? 1 : 0); 
+	printf("\n"); 
+}
+	
+void spmd_kernel::print_vint_hex(vint v) 
+{ 
+	for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+		printf("0x%X ", extract(v, i)); 
+	printf("\n"); 
+}
+
+void spmd_kernel::print_active_lanes(const char *pPrefix) 
+{ 
+	CPPSPMD_DECL(int, flags[PROGRAM_COUNT]);
+	memset(flags, 0, sizeof(flags));
+	storeu_linear(flags, vint(1));
+
+	if (pPrefix)
+		printf("%s", pPrefix);
+
+	for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+	{
+		if (flags[i])
+			printf("%u ", i);
+	}
+	printf("\n");
+}
+	
+void spmd_kernel::print_vfloat(vfloat v) 
+{ 
+	for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+		printf("%f ", extract(v, i)); 
+	printf("\n"); 
+}

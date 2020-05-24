@@ -59,6 +59,7 @@
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 
 // SSE2
 #undef CPPSPMD_NAME
@@ -72,6 +73,7 @@
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 #undef CPPSPMD_SSE2
 
 // SSE4.1
@@ -85,6 +87,7 @@
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 
 #undef CPPSPMD_SSE41
 
@@ -100,6 +103,7 @@
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 
 // AVX1 alt
 #undef CPPSPMD_NAME
@@ -113,6 +117,7 @@
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 
 // AVX2 FMA
 #undef CPPSPMD_NAME
@@ -125,6 +130,7 @@
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 
 // int16 AVX2 FMA
 #undef CPPSPMD_NAME
@@ -146,6 +152,7 @@
 #include "volume_kernel_declares.h"
 #include "noise_kernel_declares.h"
 #include "options_declares.h"
+#include "ao_bench_declares.h"
 
 #undef CPPSPMD_AVX512
 
@@ -1271,10 +1278,165 @@ int test_options(bool scalar)
 }
 
 //------------------------------------------------------------------------------------------------
+// ao bench
+
+#define NSUBSAMPLES 2
+
+extern void ao_serial(int w, int h, int nsubsamples, float image[]);
+
+static unsigned int test_iterations[] = {3, 7, 1};
+static unsigned int width = 800, height = 800;
+static unsigned char *img;
+static float *fimg;
+
+static unsigned char clamp(float f) {
+    int i = (int)(f * 255.5);
+
+    if (i < 0)
+        i = 0;
+    if (i > 255)
+        i = 255;
+
+    return (unsigned char)i;
+}
+
+static void savePPM(const char *fname, int w, int h) {
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            img[3 * (y * w + x) + 0] = clamp(fimg[3 * (y * w + x) + 0]);
+            img[3 * (y * w + x) + 1] = clamp(fimg[3 * (y * w + x) + 1]);
+            img[3 * (y * w + x) + 2] = clamp(fimg[3 * (y * w + x) + 2]);
+        }
+    }
+
+    FILE *fp = fopen(fname, "wb");
+    if (!fp) {
+        perror(fname);
+        exit(1);
+    }
+
+    fprintf(fp, "P6\n");
+    fprintf(fp, "%d %d\n", w, h);
+    fprintf(fp, "255\n");
+    fwrite(img, w * h * 3, 1, fp);
+    fclose(fp);
+    printf("Wrote image file %s\n", fname);
+}
+
+int test_ao()
+{
+	printf("test_ao:\n");
+		
+#ifdef _DEBUG
+	//width = 64;
+	//height = 64;
+	test_iterations[0] = 1;
+	test_iterations[1] = 1;
+	test_iterations[2] = 1;
+#endif
+
+#if 0
+    if (argc < 3) {
+        printf("%s\n", argv[0]);
+        printf("Usage: ao [width] [height] [ispc iterations] [tasks iterations] [serial iterations]\n");
+        getchar();
+        exit(-1);
+    } else {
+        if (argc == 6) {
+            for (int i = 0; i < 3; i++) {
+                test_iterations[i] = atoi(argv[3 + i]);
+            }
+        }
+        width = atoi(argv[1]);
+        height = atoi(argv[2]);
+    }
+#endif
+	
+    // Allocate space for output images
+    img = new unsigned char[width * height * 3];
+    fimg = new float[width * height * 3];
+
+	interval_timer tm;
+
+    //
+    // Run the ispc path, test_iterations times, and report the minimum
+    // time for any of them.
+    //
+    double minTimeSIMD = 1e30;
+    for (unsigned int i = 0; i < test_iterations[0]; i++) 
+	{
+        memset((void *)fimg, 0, sizeof(float) * width * height * 3);
+        assert(NSUBSAMPLES == 2);
+
+        tm.start();
+
+		//ao_sse2(width, height, NSUBSAMPLES, fimg);
+		ao_sse41(width, height, NSUBSAMPLES, fimg);
+		//ao_avx1(width, height, NSUBSAMPLES, fimg);
+		//ao_avx1_alt(width, height, NSUBSAMPLES, fimg);
+		//ao_avx2_fma(width, height, NSUBSAMPLES, fimg);
+        //ao_avx512(width, height, NSUBSAMPLES, fimg);
+		
+        double t = tm.get_elapsed_secs();
+        printf("@time of SIMD run:\t\t\t[%.3f] secs\n", t);
+        minTimeSIMD = std::min(minTimeSIMD, t);
+    }
+
+    // Report results and save image
+    printf("[aobench SIMD]:\t\t\t[%.3f] secs (%d x %d image)\n", minTimeSIMD, width, height);
+    savePPM("ao-simd.ppm", width, height);
+
+#if 0
+    //
+    // Run the ispc + tasks path, test_iterations times, and report the
+    // minimum time for any of them.
+    //
+    double minTimeISPCTasks = 1e30;
+    for (unsigned int i = 0; i < test_iterations[1]; i++) {
+        memset((void *)fimg, 0, sizeof(float) * width * height * 3);
+        assert(NSUBSAMPLES == 2);
+
+        reset_and_start_timer();
+        ao_ispc_tasks(width, height, NSUBSAMPLES, fimg);
+        double t = get_elapsed_mcycles();
+        printf("@time of ISPC + TASKS run:\t\t\t[%.3f] million cycles\n", t);
+        minTimeISPCTasks = std::min(minTimeISPCTasks, t);
+    }
+
+    // Report results and save image
+    printf("[aobench ispc + tasks]:\t\t[%.3f] million cycles (%d x %d image)\n", minTimeISPCTasks, width, height);
+    savePPM("ao-ispc-tasks.ppm", width, height);
+#endif
+
+    //
+    // Run the serial path, again test_iteration times, and report the
+    // minimum time.
+    //
+    double minTimeSerial = 1e30;
+    for (unsigned int i = 0; i < test_iterations[2]; i++) 
+	{
+        memset((void *)fimg, 0, sizeof(float) * width * height * 3);
+        tm.start();
+        ao_serial(width, height, NSUBSAMPLES, fimg);
+        double t = tm.get_elapsed_secs();
+        printf("@time of serial run:\t\t\t\t[%.3f] secs\n", t);
+        minTimeSerial = std::min(minTimeSerial, t);
+    }
+
+    // Report more results, save another image...
+    printf("[aobench serial]:\t\t[%.3f] million cycles (%d x %d image)\n", minTimeSerial, width, height);
+    printf("\t\t\t\t(%.2fx speedup from SIMD)\n", minTimeSerial / minTimeSIMD);
+    savePPM("ao-serial.ppm", width, height);
+
+    return 0;
+}
+
 
 int main(int argc, char *arg_v[])
 {
 	test();
+
+	test_ao();
 		
 	test_options(false);
 	
