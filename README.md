@@ -134,7 +134,7 @@ SPMD_ELSE(cond)
 SPMD_END_IF
 ```
 
-SPMD while loop (for loops are coming soon):
+SPMD while loop:
 
 ```
 // OK to use spmd_break(), spmd_continue(), spmd_return() inside while loop. OK to use SPMD_IF/SPMD_SIMPLE_IF inside while loop too.
@@ -147,41 +147,49 @@ SPMD_WEND
 Other notes:
 ------------
 
-- The float4 header is only for testing/debugging/porting use. It takes forever to compile in release and is quite slow (several times slower than just plain C code). Most of the demo's compilation time is spent on float4.
+- The float4 header is only for testing/debugging/porting use. It takes forever to compile in release and is quite slow (sometimes several times slower than just plain C code). Most of the test app's MSVC 2019 compilation time is spent compiling float4.
 
-- Each SIMD ISA is a single self-contained header file. 
+- MSVC 2019 cannot handle the AVX-512 header yet, but it should handle the others just fine. Much of CppSPMD_Fast's early development was with MSVC, but I had to switch to clang because MSVC was having internal compiler errors and bad code generation with the AVX-512 header.
+
+- Each SIMD ISA is a single self-contained header file, apart from the shared math/trig/flow control includes. There is explictly some duplicated code between the various headers to reduce the system's overall complexity.
 
 - If you want to do an SPMD break on a conditional, it's more efficient to use spmd_if_break(cond); than an SPMD_IF and a separate call to spmd_break().
 
 - I just added loads/stores to pointers to vint and vfloat arrays, using vint indices. This isn't super well tested yet. I will be adding int16 and int8/uint8 support as well, through both varying and non-varying indices. (There's already a little bit of int16 load/store support already).
 
-- If you really care about good AVX1 performance, write your code using vfloat's vs. vint's. Even with AVX2, vfloat code seems to perform slightly faster in general. If you don't care about AVX1-only CPU's, then this can be ignored.
+There are lots of different load/store variants supported in the code, which I've been adding as I encountered a need for them. This aspect of CppSPMD_Fast is by no means finished.
 
-- Benchmark your kernel using the AVX1 vs. AVX2 headers, and use the one with the best. perf. The best one to use may be surprising. 
+- If you really care about good AVX1 performance, you should probably write your code using vfloat's vs. vint's. Even with AVX2, vfloat code seems to perform slightly faster in general. If you don't care particularly about beyond SSE4.1-level scaling on AVX1-only CPU's, then this can be ignored.
 
-- The AVX2 header supports AVX1-only CPU's too, but it may be less efficient for int32 ops. The way the AVX1 vs. AVX2 headers implement int32 opts is different: The AVX1-only header uses two __m128i's for vint's and a single __m256 for vfloats, and the other uses a single __m256i for vint's).
+- Benchmark your kernel using the AVX1 vs. AVX2 headers, and use the one with the best. perf. The best one to use may be surprising.
 
-- SSE 4.1 supports float and int ops equally well in my benchmarking.
+- The AVX2 header supports AVX1-only CPU's too, but it may be less efficient for int32 ops. The way the AVX1 vs. AVX2 headers implement int32 opts is different: The AVX1-only header uses two __m128i's for vint's and a single __m256 for vfloats, and the other uses a single __m256i for vint's.
 
-- For performance: Don't use vint division or modulus operations. They are implemented in plain scalar code and are quite slow.
+- SSE 4.1 supports float and int ops equally well in my benchmarking. I have spent a lot of time making sure that *varying* integer bitshifts are supported well in CppSPMD_Fast.
 
-- Accessing vint or vfloat arrays (through vint/vfloat pointers) using store()/load()'s with *vint* indices is quite expensive (this is the slowest supported gather/scatter operation). ispc issues automatic warnings about these sorts of operations. Don't do it unless you mean it. 
+- For performance: Strongly avoid using vint division or modulus operations. They are implemented using vectorized double precision math ops and will be quite slow. (They used to be implemented using scalar code, which was even slower.)
 
-- Use uniforms as much as possible. Don't use vint or vfloat unless you KNOW and are positive the lanes must have different values. 
+- Accessing vint or vfloat arrays (through vint/vfloat pointers) using store()/load()'s with *vint* indices is quite expensive (this is the slowest supported gather/scatter operation). ispc issues automatic warnings about these sorts of operations. Don't do it unless you mean it. (This advice doesn't apply as much with AVX-512, which has very strong support for gathers/scatters. Although you still need to use them wisely.)
+
+- Use uniforms (plain C/C++ variables) as much as possible. Don't use vint or vfloat unless you KNOW and are positive the lanes must have different values. 
 
 - Use plain C uniform control flow as much as possible. For the types of kernels I write (texture encoders), almost all control flow is uniform control flow.
 
-- Use store_all() when you know that you don't need lane masking, for example to stack temporaries or if you know all lanes must be active. Same for load_all().
+- Use store_all() when you know that you don't need lane masking, for example to stack temporaries or if you know all lanes must be active. Same for load_all(). (Of course, if you use the "all" variants, you can easily shoot yourself in the foot if the lanes aren't all active. This takes experience.)
 
 - If you're careful, you can use store_all() to temps in a SPMD_IF, and then regular store()'s in the SPMD_ELSE. The code in the if block is always evaluated first, before the else.
 
-- Use SPMD_SIMPLE_IF if there is no SPMD control flow of any sort (other than other SPMD_SIMPLE_IF's) inside the conditional. This should lead to better code gen (less exec mask management). There are no checks for this, so you're on your own. If in doubt use SPMD_IF instead.
+- Conditional statements in SPMD_IF/SPMD_ELSEIF, etc. macros are evaluated *twice* (once in the "if", then in the "else" - which the compiler usually optimizes away). So if the "if" block changes the variable that the SPMD_ELSEIF later checks, you may be in for a surprise. This behavior differs from ispc. The workaround is to not change any variables or state that the if/else statement checks in the if/else blocks, or to first compute the conditional and place it in a vbool before the if/else, or use the lambda SPMD if/else variants.
+
+I may change the IF/ELSEIF macros to not have this problem. In practice it's a minor thing.
+
+- Use SPMD_SIF ("simple" if) if there is no SPMD control flow of any sort (other than other SPMD_SIF's) inside the conditional. This should lead to better code gen (less exec mask management). There are no checks for this, so you're on your own. If in doubt use SPMD_IF instead and worry about it later if perf. is a problem.
 
 - There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
 
-- FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. If my kernels, it doesn't.
+- FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. In my kernels, it doesn't. Note that using FMA can cause AVX2/AVX-512 kernels to output slightly different results.
 
-- Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. 
+- Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. The test project shows how to do this, although there's no explicit CPU dispatch yet.
 
 Also see Agner Fog's [dispatch example](https://github.com/tpn/agner/blob/master/vectorclass/dispatch_example.cpp).
 
