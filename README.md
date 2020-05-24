@@ -1,9 +1,31 @@
 # CppSPMD_Fast
-C++ SPMD test project: macro control flow, SSE2/SSE4.1/AVX1/AVX2/AVX2 FMA/AVX-512 support, lots of optimizations. This code is still closely compatible with the [original CppSPMD project](https://github.com/nlguillemot/CppSPMD).
+CppSPMD_Fast is a C++ header-only library that implements a subset of [Intel's ispc](https://ispc.github.io/) [SPMD](https://en.wikipedia.org/wiki/SPMD) language in C++, using [SIMD](https://en.wikipedia.org/wiki/SIMD) processor intrinsics. Many ispc kernels can be ported to CppSPMD with few changes. CppSPMD supports math and logical ops using varying ints and floats, varying SPMD flow control constructs (subroutine calls, if/else, while, do, for, foreach, return, break, continue, any, all) implemented with macros or lambdas, and gather/scatter load/store operations. It also contains a simple portable and scalable math and trig approximation library written in CppSPMD itself. 
+
+CppSPMD_Fast currently supports SSE2, SSE4.1, AVX1, AVX2, AVX2 FMA3, and AVX-512. WebAssembly and ARM Neon support is planned. This code is still very closely compatible with the [original CppSPMD project](https://github.com/nlguillemot/CppSPMD).
 
 This a development repo. The implementation is incomplete, it's a lot of brand new code so there are definitely going to be bugs in here, and I am refactoring the code to cut down on the amount of code duplication between the various headers. If you find it useful or interesting, that's wonderful, but please keep in mind this code is actively changing.
 
-IMPORTANT: This code has only been compiled with clang 9.0.0. Earlier versions were compiled with MSVC 2019, but once I added AVX-512 support I had to switch to clang because MSVC wasn't reliable (the compiler was crashing). Everything but AVX-512 should still compile with MSVC 2019, but I haven't verified this yet.
+IMPORTANT: This code has only been compiled with clang 9.0.0. Earlier versions were compiled with MSVC 2019, but once I added AVX-512 support I had to switch to clang because MSVC wasn't reliable (the compiler was crashing). Everything but AVX-512 should still compile with MSVC 2019, but I haven't verified this yet. gcc should work too, but you may encounter compiler warnings as I haven't tested it yet.
+
+Organization
+------------
+
+The different vector instruction sets (SSE2, SSE4.1, AVX1, AVX2, etc.) are different headers that share some common functionality. To use CppSPMD for a specific instruction set, just #include one of these headers:
+
+- cppspmd_float4.h: This is the non-SIMD header, implemented in pure C with no intrinsics usage. It completely emulates the functionality of the other headers, and is therefore a bit slow (to very slow depending on what you do). It's only intended to ease porting to new systems and for testing/validation.
+- cppspmd_sse.h: The SSE2 and SSE4.1 header. #define CPPSPMD_SSE2 to 1 before including to get SSE2, otherwise you get SSE4.1. Compile with either "-msse4.1" or "-msse2".
+- cppspmd_avx1.h: The "AVX1 alt" header. The "vint" struct contains two __m128i's. Compile with "-mavx".
+- cppspmd_avx2.h: This header supports both AVX2 and AVX1, with optional FMA3. #define CPPSPMD_USE_AVX2 to 1 before including to get AVX1, otherwise you get AVX2. The "vint" struct contains a single "__m256i". Compile with either "-mavx" or "-mavx2 -mfma".
+SSE operations must be used for most integer ops in AVX1, and there are multiple ways of doing this with different pros and cons, so AVX1 is supported through both headers.
+- cppspmd_avx512.h: AVX-512 support. Compile with "-mavx512f -mavx512vbmi -mavx512dq".
+- cppspmd_int16_avx2_fma.h: A simplified AVX2 header where vint's are 16-wide int16_t's vs. int32_t's of the other headers. Used to gain more parallelism in purely integer kernels. Doesn't include the built-in math/trig library. Compile with "-mavx2 -mfma".
+
+Common headers (don't include them directly), used by all the headers above except for cppspmd_int16_avx2_fma.h:
+
+- cppspmd_math.h: Math/trig/helper library. Contains approximations for log/log2, exp/exp2, pow, tan, atan/atan2, reciprocal estimate, and reciprocal square root estimate.  Importantly, all vectorized math approximation functions are completely implemented in CppSPMD itself, not using raw intrinsics, so they are portable between vector instruction sets and will generate the same results with all headers (ignoring differences due to FMA3 usage). Also contains a simple SPMD random number generator, reverse bits, count leading/trailing zeros, and count set bits helpers. 
+- cppspmd_math_declares.h: Declares for the math library.
+- cppspmd_sincos.h: Vectorized sin/cos ported from Microsoft's MIT licensed DirectXMath project. (This is currently the only code ported from DirectXMath, which falls under Microsoft's MIT license.)
+- cppspmd_flow.h: All SPMD flow control functionality is here. Contains the original CppSPMD project's lambda-based flow control (with some bug fixes/improvements), along with the new and more efficient macro-based flow control. Compared to the original CppSPMD project, CppSPMD_fast uses one less execution mask. (The "internal" mask has been removed as it was unnecessary.)
 
 References:
 -----------
