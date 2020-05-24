@@ -3,7 +3,7 @@ CppSPMD_Fast is a C++ header-only library that implements a subset of [Intel's i
 
 CppSPMD_Fast currently supports SSE2, SSE4.1, AVX1, AVX2, AVX2 FMA3, and AVX-512. WebAssembly and ARM Neon support is planned. This code is still very closely compatible with the [original CppSPMD project](https://github.com/nlguillemot/CppSPMD).
 
-This a development repo. The implementation is incomplete, it's a lot of brand new code so there are definitely going to be bugs in here, and I am refactoring the code to cut down on the amount of code duplication between the various headers. If you find it useful or interesting, that's wonderful, but please keep in mind this code is actively changing.
+This is a development repo. It's a lot of brand new code, so there are definitely going to be bugs in here. If you find it useful or interesting, that's wonderful, but please keep in mind this code is actively changing.
 
 IMPORTANT: This code has only been compiled with clang 9.0.0. Earlier versions were compiled with MSVC 2019, but once I added AVX-512 support I had to switch to clang because MSVC wasn't reliable (the compiler was crashing). Everything but AVX-512 should still compile with MSVC 2019, but I haven't verified this yet. gcc should work too, but you may encounter compiler warnings as I haven't tested it yet.
 
