@@ -1133,6 +1133,15 @@ CPPSPMD_FORCE_INLINE vint operator*(const vint& a, const vint& b) { return vint{
 CPPSPMD_FORCE_INLINE vint operator*(const vint& a, int b) { return a * vint(b); }
 CPPSPMD_FORCE_INLINE vint operator*(int a, const vint& b) { return vint(a) * b; }
 
+CPPSPMD_FORCE_INLINE __m512i mulhi_epu32(__m512i a, __m512i b)
+{
+	__m512i tmp1 = _mm512_mul_epu32(a, b);
+	__m512i tmp2 = _mm512_mul_epu32(_mm512_bsrli_epi128(a, 4), _mm512_bsrli_epi128(b, 4));
+	return _mm512_unpacklo_epi32(_mm512_shuffle_epi32(tmp1, _MM_SHUFFLE(0, 0, 3, 1)), _mm512_shuffle_epi32(tmp2, _MM_SHUFFLE(0, 0, 3, 1)));
+}
+
+CPPSPMD_FORCE_INLINE vint mulhiu(const vint& a, const vint& b) { return vint{ mulhi_epu32(a.m_value, b.m_value) }; }
+
 CPPSPMD_FORCE_INLINE vint operator-(const vint& v) { return vint{ _mm512_sub_epi32(_mm512_setzero_si512(), v.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vint operator~(const vint& a) { return vint{ -a - 1 }; }

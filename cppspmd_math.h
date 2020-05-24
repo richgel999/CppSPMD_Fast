@@ -107,7 +107,7 @@ inline vfloat spmd_kernel::log2_est(vfloat v)
 	//return fexp + ((vfma(a, (xm1sqr * xm1), vfma(b, xm1sqr, c * xm1))) / (xm1sqr + vfma(d, xm1, e)));
 }
 
-// compute log with ~8 bits of precision
+// Uses log2_est(), so this function must be <= the precision of that.
 inline vfloat spmd_kernel::log_est(vfloat v)
 {
 	return log2_est(v) * 0.693147181f;
@@ -269,7 +269,7 @@ inline vfloat spmd_kernel::pow_est(vfloat arg1, vfloat arg2)
 */
 
 // Math from this web page: http://developer.download.nvidia.com/cg/sin.html
-// This is ~2x slower than sincos_est(), and less accurate, but I'm keeping it here for comparison purposes to help validate/sanity check sin_est() and cos_est().
+// This is ~2x slower than sin_est() or cos_est(), and less accurate, but I'm keeping it here for comparison purposes to help validate/sanity check sin_est() and cos_est().
 inline vfloat spmd_kernel::sincos_est_a(vfloat a, bool sin_flag)
 {
 	const float c0_x = 0.0f, c0_y = 0.5f, c0_z = 1.0f;
@@ -500,7 +500,19 @@ inline vfloat spmd_kernel::tan_est(vfloat x)
 	return cast_vint_to_vfloat(cast_vfloat_to_vint(r) ^ sgn);
 }
 
-inline vint spmd_kernel::get_rand(rand_context& x)
+inline void spmd_kernel::seed_rand(rand_context& x, vint seed)
+{ 
+	store(x.a, 0xf1ea5eed); 
+	store(x.b, seed ^ 0xd8487b1f); 
+	store(x.c, seed ^ 0xdbadef9a); 
+	store(x.d, seed); 
+	for (int i = 0; i < 20; ++i) 
+		(void)get_randu(x); 
+}
+
+// https://burtleburtle.net/bob/rand/smallprng.html
+// Returns 32-bit unsigned random numbers.
+inline vint spmd_kernel::get_randu(rand_context& x)
 { 
 	vint e = x.a - VINT_ROT(x.b, 27); 
 	store(x.a, x.b ^ VINT_ROT(x.c, 17)); 
@@ -510,14 +522,26 @@ inline vint spmd_kernel::get_rand(rand_context& x)
 	return x.d; 
 }
 
-inline void spmd_kernel::seed_rand(rand_context& x, vint seed)
-{ 
-	store(x.a, 0xf1ea5eed); 
-	store(x.b, seed ^ 0xd8487b1f); 
-	store(x.c, seed ^ 0xdbadef9a); 
-	store(x.d, seed); 
-	for (int i = 0; i < 20; ++i) 
-		(void)get_rand(x); 
+// Returns random numbers between [low, high), or low if low >= high
+inline vint spmd_kernel::get_randi(rand_context& x, vint low, vint high)
+{
+	vint rnd = get_randu(x);
+
+	vint range = high - low;
+
+	vint rnd_range = mulhiu(rnd, range);
+	
+	return spmd_ternaryi(low < high, low + rnd_range, low);
+}
+
+// Returns random numbers between [low, high), or low if low >= high
+inline vfloat spmd_kernel::get_randf(rand_context& x, vfloat low, vfloat high)
+{
+	vint rndi = get_randu(x) & 0x7fffff;
+
+	vfloat rnd = (vfloat)(rndi) * (1.0f / 8388608.0f);
+
+	return spmd_ternaryf(low < high, vfma(high - low, rnd, low), low);
 }
 
 CPPSPMD_FORCE_INLINE void spmd_kernel::init_reverse_bits(vint& tab1, vint& tab2)

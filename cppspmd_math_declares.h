@@ -42,8 +42,17 @@ inline vfloat tan_est(vfloat x);
 
 // https://burtleburtle.net/bob/rand/smallprng.html
 struct rand_context { vint a, b, c, d; };
-inline vint get_rand(rand_context& x);
+
 inline void seed_rand(rand_context& x, vint seed);
+
+// Returns 32-bit unsigned random numbers.
+inline vint get_randu(rand_context& x);
+
+// Returns random numbers between [low, high), or low if low >= high
+inline vint get_randi(rand_context& x, vint low, vint high);
+
+// Returns random numbers between [low, high), or low if low >= high
+inline vfloat get_randf(rand_context& x, vfloat low, vfloat high);
 
 CPPSPMD_FORCE_INLINE void init_reverse_bits(vint& tab1, vint& tab2);
 CPPSPMD_FORCE_INLINE vint reverse_bits(vint k, vint tab1, vint tab2);

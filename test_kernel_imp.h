@@ -43,10 +43,33 @@ struct test_kernel : spmd_kernel
 
 	FILE* pFile;
 
-	void print_vbool(vbool v) { for (uint32_t i = 0; i < PROGRAM_COUNT; i++) fprintf(pFile, "%i ", extract(v, i)); fprintf(pFile, "\n"); }
-	void print_vint(vint_t v) { for (uint32_t i = 0; i < PROGRAM_COUNT; i++) fprintf(pFile, "%i ", extract(v, i)); fprintf(pFile, "\n"); }
-	void print_vint16(vint_t v) { for (uint32_t i = 0; i < PROGRAM_COUNT * 2; i++) fprintf(pFile, "%i ", (extract(v, i/2) >> ((i & 1) * 16)) & 0xFFFF); fprintf(pFile, "\n"); }
-	void print_vint_hex(vint_t v) { for (uint32_t i = 0; i < PROGRAM_COUNT; i++) fprintf(pFile, "0x%X ", extract(v, i)); fprintf(pFile, "\n"); }
+	void print_vbool(vbool v) 
+	{ 
+		for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+			fprintf(pFile, "%i ", extract(v, i)); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_vint(vint_t v) 
+	{ 
+		for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+			fprintf(pFile, "%i ", extract(v, i)); 
+		fprintf(pFile, "\n"); 
+	}
+	
+	void print_vint16(vint_t v) 
+	{ 
+		for (uint32_t i = 0; i < PROGRAM_COUNT * 2; i++) 
+			fprintf(pFile, "%i ", (extract(v, i/2) >> ((i & 1) * 16)) & 0xFFFF); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_vint_hex(vint_t v) 
+	{ 
+		for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+			fprintf(pFile, "0x%X ", extract(v, i)); 
+		fprintf(pFile, "\n"); 
+	}
 
 	void print_active_lanes(const char *pPrefix) 
 	{ 
@@ -75,15 +98,61 @@ struct test_kernel : spmd_kernel
 		fprintf(pFile, "\n"); 
 	}
 
-	void print_vfloat(vfloat v) { for (uint32_t i = 0; i < PROGRAM_COUNT; i++) fprintf(pFile, "%f ", extract(v, i)); fprintf(pFile, "\n"); }
-	void print_float_ptr(const float* v, int n = -1) { for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) fprintf(pFile, "%f ", v[i]); fprintf(pFile, "\n"); }
-	void print_int_ptr(const int_t * v, int n = -1) { for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) fprintf(pFile, "%i ", v[i]); fprintf(pFile, "\n"); }
-	void print_int_hex_ptr(const int_t * v, int n = -1) { for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) fprintf(pFile, "0x%X ", v[i]); fprintf(pFile, "\n"); }
-	void print_int32_hex_ptr(const int32_t * v, int n = -1) { for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) fprintf(pFile, "0x%X ", v[i]); fprintf(pFile, "\n"); }
-	void print_int(const uint32_t v) { fprintf(pFile, "%u\n", v); }
-	void print_int(const int32_t v) { fprintf(pFile, "%i\n", v); }
-	void print_int(const uint64_t v) { fprintf(pFile, "0x%llx\n", v); }
-	void print_error(const char* pMsg) { fprintf(pFile, "%s", pMsg); fprintf(stderr, "%s", pMsg); }
+	void print_vfloat(vfloat v) 
+	{ 
+		for (uint32_t i = 0; i < PROGRAM_COUNT; i++) 
+			fprintf(pFile, "%f ", extract(v, i)); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_float_ptr(const float* v, int n = -1) 
+	{ 
+		for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) 
+			fprintf(pFile, "%f ", v[i]); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_int_ptr(const int_t * v, int n = -1) 
+	{ 
+		for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) 
+			fprintf(pFile, "%i ", v[i]); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_int_hex_ptr(const int_t * v, int n = -1) 
+	{ 
+		for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) 
+			fprintf(pFile, "0x%X ", v[i]); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_int32_hex_ptr(const int32_t * v, int n = -1) 
+	{ 
+		for (int i = 0; i < (n >= 0 ? n : PROGRAM_COUNT); i++) 
+			fprintf(pFile, "0x%X ", v[i]); 
+		fprintf(pFile, "\n"); 
+	}
+
+	void print_int(const uint32_t v) 
+	{ 
+		fprintf(pFile, "%u\n", v); 
+	}
+
+	void print_int(const int32_t v) 
+	{ 
+		fprintf(pFile, "%i\n", v); 
+	}
+
+	void print_int(const uint64_t v) 
+	{ 
+		fprintf(pFile, "0x%llx\n", v); 
+	}
+
+	void print_error(const char* pMsg) 
+	{ 
+		fprintf(pFile, "%s", pMsg); 
+		fprintf(stderr, "%s", pMsg); 
+	}
 
 	bool _call(FILE * p);
 
@@ -209,11 +278,11 @@ bool test_kernel::_call(FILE* p)
 		seed_rand(z1, zk1);
 		for (int i = 0; i < 65536; i++)
 		{
-			vint bits(get_rand(z1));
+			vint bits(get_randu(z1));
 #if CPPSPMD_SSE
-			vint shift((get_rand(z1) & 0x7FFFFFFF) % 64);
+			vint shift((get_randu(z1) & 0x7FFFFFFF) % 64);
 #else
-			vint shift((get_rand(z1) & 0x7FFFFFFF) & 31);
+			vint shift((get_randu(z1) & 0x7FFFFFFF) & 31);
 #endif
 
 			vint r = vuint_shift_right(bits, shift);
@@ -257,9 +326,9 @@ bool test_kernel::_call(FILE* p)
 	seed_rand(z1, zk1);
 	for (int i = 0; i < 32; i++)
 	{
-		vint_t d1 = get_rand(z1), d2 = get_rand(z1);
+		vint_t d1 = get_randu(z1), d2 = get_randu(z1);
 
-		SPMD_IF(get_rand(z1) & 1)
+		SPMD_IF(get_randu(z1) & 1)
 		{
 			store(d2, d2 & 0xFFFF);
 		}
@@ -267,13 +336,13 @@ bool test_kernel::_call(FILE* p)
 
 		SPMD_WHILE(d1 == 0x80000000)
 		{
-			store(d2, get_rand(z1));
+			store(d2, get_randu(z1));
 		}
 		SPMD_WEND
 						
 		SPMD_WHILE((d2 == 0) || (d2 == 0x80000000))
 		{
-			store(d2, get_rand(z1));
+			store(d2, get_randu(z1));
 		}
 		SPMD_WEND
 		
@@ -323,7 +392,7 @@ bool test_kernel::_call(FILE* p)
 	seed_rand(c1, k1);
 	for (int t = 0; t < 64; t++)
 	{
-		vint q = get_rand(c1);
+		vint q = get_randu(c1);
 
 		print_vint_hex(q);
 
@@ -1529,6 +1598,21 @@ bool test_kernel::_call(FILE* p)
 	}
 	SPMD_FOREACH_END(loop_index1);
 
+#if !CPPSPMD_INT16
+	fprintf(pFile, "mulhiu:\n");
+	print_vint_hex(mulhiu(a, b));
+	print_vint_hex(mulhiu(a, vint(0xFFFFFFFF)));
+	print_vint_hex(mulhiu(a, vint(0x7FFFFFFF)));
+	print_vint_hex(mulhiu(a, vint(0x1FFFFFFF)));
+	print_vint_hex(mulhiu(b, vint(0xFFFFFFFF)));
+	print_vint_hex(mulhiu(b, vint(0x7FFFFFFF)));
+	print_vint_hex(mulhiu(b, vint(0x1FFFFFFF)));
+	print_vint_hex(mulhiu(vint(0xFFFFFFFF), vint(0xEFFFFFFF)));
+	print_vint_hex(mulhiu(vint(0x8FFFFFFF), vint(0xDFFFFFFF)));
+	print_vint_hex(mulhiu(vint(0x4FFFFFFF), vint(0xCFFFFFFF)));
+	print_vint_hex(mulhiu(vint(0x0FFFFFFF), vint(0xAFFFFFFF)));
+#endif
+	
 	return succeeded;
 }
 
@@ -1949,7 +2033,13 @@ void test_kernel::test_rand()
 	fprintf(pFile, "Vectorized:\n");
 	
 	for (int i = 0; i < 4; i++)
-		print_vint_hex(get_rand(c1));
+		print_vint_hex(get_randu(c1));
+
+	for (int i = 0; i < 8; i++)
+		print_vint_hex(get_randi(c1, vint(0x50), vint(0x70)));
+
+	for (int i = 0; i < 8; i++)
+		print_vfloat(get_randf(c1, -1.0f, 1.0f));
 #endif
 }
 

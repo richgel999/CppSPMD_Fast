@@ -213,6 +213,16 @@ CPPSPMD_FORCE_INLINE int4 setzero_int4() { return int4(0, 0, 0, 0); }
 CPPSPMD_FORCE_INLINE int4 add_int4(const int4 &a, const int4 &b) { return int4(a.c[0] + b.c[0], a.c[1] + b.c[1], a.c[2] + b.c[2], a.c[3] + b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 sub_int4(const int4 &a, const int4 &b) { return int4(a.c[0] - b.c[0], a.c[1] - b.c[1], a.c[2] - b.c[2], a.c[3] - b.c[3]); }
 CPPSPMD_FORCE_INLINE int4 mul_int4(const int4 &a, const int4 &b) { return int4(a.c[0] * b.c[0], a.c[1] * b.c[1], a.c[2] * b.c[2], a.c[3] * b.c[3]); }
+
+CPPSPMD_FORCE_INLINE int4 mulhiu_int4(const int4 &a, const int4 &b) 
+{ 
+	return int4( 
+		(int)(((uint64_t)((uint32_t)a.c[0]) * (uint64_t)((uint32_t)b.c[0])) >> 32U), 
+		(int)(((uint64_t)((uint32_t)a.c[1]) * (uint64_t)((uint32_t)b.c[1])) >> 32U), 
+		(int)(((uint64_t)((uint32_t)a.c[2]) * (uint64_t)((uint32_t)b.c[2])) >> 32U), 
+		(int)(((uint64_t)((uint32_t)a.c[3]) * (uint64_t)((uint32_t)b.c[3])) >> 32U) );
+}
+
 CPPSPMD_FORCE_INLINE int4 div_int4(const int4 &a, const int4 &b) { return int4(b.c[0] ? (a.c[0] / b.c[0]) : INT_MIN, b.c[1] ? (a.c[1] / b.c[1]) : INT_MIN, b.c[2] ? (a.c[2] / b.c[2]) : INT_MIN, b.c[3] ? (a.c[3] / b.c[3]) : INT_MIN); }
 CPPSPMD_FORCE_INLINE int4 div_int4(const int4 &a, int b) { return b ? int4(a.c[0] / b, a.c[1] / b, a.c[2] / b, a.c[3] / b) : int4(INT_MIN, INT_MIN, INT_MIN, INT_MIN); }
 CPPSPMD_FORCE_INLINE int4 mod_int4(const int4 &a, const int4 &b) { return int4(b.c[0] ? (a.c[0] % b.c[0]) : 0, b.c[1] ? (a.c[1] % b.c[1]) : 0, b.c[2] ? (a.c[2] % b.c[2]) : 0, b.c[3] ? (a.c[3] % b.c[3]) : 0); }
@@ -1756,6 +1766,8 @@ CPPSPMD_FORCE_INLINE vint operator-(int a, const vint& b) { return vint(a) - b; 
 CPPSPMD_FORCE_INLINE vint operator*(const vint& a, const vint& b) { return vint{ mul_int4(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator*(const vint& a, int b) { return a * vint(b); }
 CPPSPMD_FORCE_INLINE vint operator*(int a, const vint& b) { return vint(a) * b; }
+
+CPPSPMD_FORCE_INLINE vint mulhiu(const vint& a, const vint& b) { return vint{ mulhiu_int4(a.m_value, b.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vint operator-(const vint& v) { return vint{ neg_int4(v.m_value) }; }
 

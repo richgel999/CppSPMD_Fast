@@ -241,6 +241,27 @@ CPPSPMD_FORCE_INLINE __m256i blendv_epi32(__m256i a, __m256i b, __m256i c)
 #endif
 }
 
+#if CPPSPMD_USE_AVX2
+CPPSPMD_FORCE_INLINE __m256i mulhi_epu32(__m256i a, __m256i b)
+{
+	__m256i tmp1 = _mm256_mul_epu32(a, b);
+	__m256i tmp2 = _mm256_mul_epu32(_mm256_srli_si256(a, 4), _mm256_srli_si256(b, 4));
+	return _mm256_unpacklo_epi32(_mm256_shuffle_epi32(tmp1, _MM_SHUFFLE(0, 0, 3, 1)), _mm256_shuffle_epi32(tmp2, _MM_SHUFFLE(0, 0, 3, 1)));
+}
+#else
+CPPSPMD_FORCE_INLINE __m128i mulhi_epu32(__m128i a, __m128i b)
+{
+	__m128i tmp1 = _mm_mul_epu32(a, b);
+	__m128i tmp2 = _mm_mul_epu32(_mm_srli_si128(a, 4), _mm_srli_si128(b, 4));
+	return _mm_unpacklo_epi32(_mm_shuffle_epi32(tmp1, _MM_SHUFFLE(0, 0, 3, 1)), _mm_shuffle_epi32(tmp2, _MM_SHUFFLE(0, 0, 3, 1)));
+}
+
+CPPSPMD_FORCE_INLINE __m256i mulhi_epu32(__m256i a, __m256i b)
+{
+	return combine_i(mulhi_epu32(get_lo_i(a), get_lo_i(b)), mulhi_epu32(get_hi_i(a), get_hi_i(b)));
+}
+#endif
+
 const uint32_t ALL_ON_MOVEMASK = 0xFF;
 
 struct spmd_kernel
@@ -1736,6 +1757,8 @@ CPPSPMD_FORCE_INLINE vint operator-(int a, const vint& b) { return vint(a) - b; 
 CPPSPMD_FORCE_INLINE vint operator*(const vint& a, const vint& b) { return vint{ mullo_epi32(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vint operator*(const vint& a, int b) { return a * vint(b); }
 CPPSPMD_FORCE_INLINE vint operator*(int a, const vint& b) { return vint(a) * b; }
+
+CPPSPMD_FORCE_INLINE vint mulhiu(const vint& a, const vint& b) { return vint{ mulhi_epu32(a.m_value, b.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vint operator-(const vint& v) { return vint{ sub_epi32(_mm256_setzero_si256(), v.m_value) }; }
 

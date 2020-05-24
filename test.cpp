@@ -1275,7 +1275,7 @@ int test_options(bool scalar)
 int main(int argc, char *arg_v[])
 {
 	test();
-
+		
 	test_options(false);
 	
 	test_options(true);

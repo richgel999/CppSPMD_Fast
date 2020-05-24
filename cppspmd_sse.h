@@ -1490,6 +1490,8 @@ CPPSPMD_FORCE_INLINE vint operator*(const vint& a, const vint& b) { return vint{
 CPPSPMD_FORCE_INLINE vint operator*(const vint& a, int b) { return a * vint(b); }
 CPPSPMD_FORCE_INLINE vint operator*(int a, const vint& b) { return vint(a) * b; }
 
+CPPSPMD_FORCE_INLINE vint mulhiu(const vint& a, const vint& b) { return vint{ mulhi_epu32(a.m_value, b.m_value) }; }
+
 CPPSPMD_FORCE_INLINE vint operator-(const vint& v) { return vint{ _mm_sub_epi32(_mm_setzero_si128(), v.m_value) }; }
 
 CPPSPMD_FORCE_INLINE vint operator~(const vint& a) { return vint{ -a - 1 }; }
