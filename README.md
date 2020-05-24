@@ -43,7 +43,11 @@ https://pastebin.com/xaACX3Th
 Simple Kernel Example
 --------------------
 
-This is the [ispc "simple" example](https://github.com/ispc/ispc/blob/master/examples/simple/simple.ispc), ported to CppSPMD. It purposely uses the lambda-based flow control implementation of "spmd_foreach", but note that a macro-based implementation (SPMD_FOREACH) is also supported and could have been used. (Whether or not that would lead to more efficient code generation is highly compiler dependent, and also dependent on the kernel itself.)
+This is the [ispc "simple" example](https://github.com/ispc/ispc/blob/master/examples/simple/simple.ispc), ported to CppSPMD. 
+
+It purposely uses the lambda-based flow control implementation of "spmd_foreach", but note that a macro-based implementation (SPMD_FOREACH) is also supported and could have been used. (Whether or not that would lead to more efficient code generation is highly compiler dependent, and also dependent on the kernel itself.)
+
+This example uses "SPMD_SIF", which is a "simple" SPMD varying conditional if statement that doesn't support spmd_break/spmd_continue/spmd_return inside the if or else blocks (for slightly better performance). 
 
 ```
 using namespace CPPSPMD;
