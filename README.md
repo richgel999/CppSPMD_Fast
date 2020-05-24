@@ -16,7 +16,7 @@ The different vector instruction sets (SSE2, SSE4.1, AVX1, AVX2, etc.) are diffe
 - cppspmd_sse.h: The SSE2 and SSE4.1 header. #define CPPSPMD_SSE2 to 1 before including to get SSE2, otherwise you get SSE4.1. Compile with either "-msse4.1" or "-msse2".
 - cppspmd_avx1.h: The "AVX1 alt" header. The "vint" struct contains two __m128i's. Compile with "-mavx".
 - cppspmd_avx2.h: This header supports both AVX2 and AVX1, with optional FMA3. #define CPPSPMD_USE_AVX2 to 1 before including to get AVX1, otherwise you get AVX2. The "vint" struct contains a single "__m256i". Compile with either "-mavx" or "-mavx2 -mfma".
-SSE operations must be used for most integer ops in AVX1, and there are multiple ways of doing this with different pros and cons, so AVX1 is supported through both headers.
+SSE operations must be used for most integer ops in AVX1, and there are multiple ways of doing this with different pros and cons, so AVX1 is supported through two different headers.
 - cppspmd_avx512.h: AVX-512 support. Compile with "-mavx512f -mavx512vbmi -mavx512dq".
 - cppspmd_int16_avx2_fma.h: A simplified AVX2 header where vint's are 16-wide int16_t's vs. int32_t's of the other headers. Used to gain more parallelism in purely integer kernels. Doesn't include the built-in math/trig library. Compile with "-mavx2 -mfma".
 
