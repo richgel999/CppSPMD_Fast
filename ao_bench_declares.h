@@ -1,0 +1,1 @@
+void CPPSPMD_NAME(ao)(int w, int h, int nsubsamples, float image[]);
