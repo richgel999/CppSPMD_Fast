@@ -187,7 +187,7 @@ I may change the IF/ELSEIF macros to not have this problem. In practice it's a m
 
 - There are new helpers for linear and strided loads/stores: store_strided(), load_linear(), etc.
 
-- FMA support is optional for AVX2. I would benchmark with it turned on and off, and only use it if it actually makes a difference. In my kernels, it doesn't. Note that using FMA can cause AVX2/AVX-512 kernels to output slightly different results.
+- FMA support is optional for AVX2/AVX-512. I would benchmark with it turned on and off, and only use it if it actually makes a difference. In my kernels, it doesn't. Note that using FMA can cause AVX2/AVX-512 kernels to output slightly different results.
 
 - Be aware that there are [AVX-VEX transition penalities](https://software.intel.com/sites/default/files/m/d/4/1/d/8/11MC12_Avoiding_2BAVX-SSE_2BTransition_2BPenalties_2Brh_2Bfinal.pdf). To actually ship kernels with multiple SIMD ISA's, you will need to compile them to separate files using the correct MSVC/Intel/etc. compiler options. The test project shows how to do this, although there's no explicit CPU dispatch yet.
 
