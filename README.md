@@ -40,6 +40,58 @@ https://pastebin.com/xaACX3Th
 
 (This is ONLY released on pastebin.com as a CppSPMD example. This BC1 kernel has several quality-released bugs which I am currently fixing.)
 
+Simple Kernel Example
+--------------------
+
+```
+using namespace CPPSPMD;
+
+// Must use unique struct/class names, or put them into uniquely named namespaces, otherwise the linker will get confused between the different variants. (At least with MSVC.)
+namespace CPPSPMD_NAME(simple_namespace)
+{
+
+struct simple : spmd_kernel
+{
+    void _call(float vin[], float vout[], int count) 
+    {
+        spmd_foreach(0, count, [&](const lint& index, int pcount)
+            {
+                // Load the appropriate input value for this program instance.
+                vfloat v = load(index[vin]);
+
+                // Do an arbitrary little computation, but at least make the
+                // computation dependent on the value being processed
+                
+                // Important: The CppSPMD macros evaluate the conditional in both the SPMD_SIF/SPMD_SELSE macros, so we cannot change v inside the if block like the ispc sample does.
+                // Instead, we write to "result".
+
+                vfloat result;
+                SPMD_SIF(v < 3.0f)
+                {
+                    store(result, v * v);
+                }
+                SPMD_SELSE(v < 3.0f)
+                {
+                    store(result, sqrt(v));
+                }
+                SPMD_SENDIF;
+
+                // And write the result to the output array.
+                store(index[vout], result);
+            });
+    }
+};
+
+} // namespace
+
+using namespace CPPSPMD_NAME(simple_namespace);
+
+void CPPSPMD_NAME(simple)(float vin[], float vout[], int count)
+{
+	spmd_call< simple >(vin, vout, count);
+}
+```
+
 Macro-based control flow examples:
 ----------------------------------
 
