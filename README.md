@@ -33,7 +33,7 @@ One of the key design goals of CppSPMD_Fast: If you faithfully port the core Cpp
 References:
 -----------
 
-[CppCon 2016: Nicolas Guillemot “SPMD Programming Using C++ and ISPC"](https://www.youtube.com/watch?v=UgaQCg-0ZoU&t=617s)
+[CppCon 2016 Video: Nicolas Guillemot “SPMD Programming Using C++ and ISPC"](https://www.youtube.com/watch?v=UgaQCg-0ZoU&t=617s)
 
 [SPMD Programming In C++: CPPCon 2016](https://github.com/CppCon/CppCon2016/blob/master/Presentations/SPMD%20Programming%20Using%20C%2B%2B%20and%20ISPC/SPMD%20Programming%20Using%20C%2B%2B%20and%20ISPC%20-%20Nicolas%20Guillemot%20-%20CppCon%202016.pdf)
 
