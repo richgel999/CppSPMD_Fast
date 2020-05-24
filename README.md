@@ -12,7 +12,7 @@ Organization
 
 The different vector instruction sets (SSE2, SSE4.1, AVX1, AVX2, etc.) are different headers that share some common functionality. To use CppSPMD for a specific instruction set, just #include one of these headers:
 
-- cppspmd_float4.h: This is the non-SIMD header, implemented in pure C with no intrinsics usage. It completely emulates the functionality of the other headers, and is therefore a bit slow (to very slow depending on what you do). It's only intended to ease porting to new systems and for testing/validation.
+- cppspmd_float4.h: This is the non-SIMD header, implemented in pure standard C/C++ with no intrinsics usage. It completely emulates the functionality of the other headers, and is therefore a bit slow (to very slow depending on what you do). It's only intended to ease porting to new systems and for testing/validation.
 - cppspmd_sse.h: The SSE2 and SSE4.1 header. #define CPPSPMD_SSE2 to 1 before including to get SSE2, otherwise you get SSE4.1. Compile with either "-msse4.1" or "-msse2".
 - cppspmd_avx1.h: The "AVX1 alt" header. The "vint" struct contains two __m128i's. Compile with "-mavx".
 - cppspmd_avx2.h: This header supports both AVX2 and AVX1, with optional FMA3. #define CPPSPMD_USE_AVX2 to 1 before including to get AVX1, otherwise you get AVX2. The "vint" struct contains a single "__m256i". Compile with either "-mavx" or "-mavx2 -mfma".
