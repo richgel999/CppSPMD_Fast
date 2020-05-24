@@ -43,6 +43,8 @@ https://pastebin.com/xaACX3Th
 Simple Kernel Example
 --------------------
 
+This is the [ispc "simple" example](https://github.com/ispc/ispc/blob/master/examples/simple/simple.ispc), ported to CppSPMD. It purposely uses the lambda-based flow control implementation of "spmd_foreach", but note that a macro-based implementation (SPMD_FOREACH) is also supported and could have been used. (Whether or not that would lead to more efficient code generation is highly compiler dependent, and also dependent on the kernel itself.)
+
 ```
 using namespace CPPSPMD;
 
