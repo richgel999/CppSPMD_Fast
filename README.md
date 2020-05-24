@@ -189,3 +189,5 @@ License
 =======
 
 See [LICENSE](https://github.com/richgel999/CppSPMD_Fast/blob/master/LICENSE).
+
+The CppSPMD_Fast headers fall under the MIT license. Many of the example kernels use Intel's open source license.
