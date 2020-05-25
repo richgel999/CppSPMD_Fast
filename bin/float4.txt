@@ -1945,4 +1945,7 @@ index=1
 active lanes: 0 1 2 
 index=3
 active lanes: 3 
+SPMD_UNMASKED_BEGIN:
+active lanes in SPMD_SIF: 2 
+active lanes in SPMD_UNMASKED_BEGIN: 0 1 2 3 
 active lanes: 0 1 2 3 

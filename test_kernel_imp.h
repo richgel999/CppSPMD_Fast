@@ -1674,6 +1674,19 @@ bool test_kernel::_call(FILE* p)
 	}
 	SPMD_FOREACH_UNIQUE_INT_END;
 
+	fprintf(pFile, "SPMD_UNMASKED_BEGIN:\n");
+	SPMD_SIF((vint_t)program_index == 2)
+	{
+		print_active_lanes("active lanes in SPMD_SIF: ");
+
+		SPMD_UNMASKED_BEGIN
+		{
+			print_active_lanes("active lanes in SPMD_UNMASKED_BEGIN: ");
+		}
+		SPMD_UNMASKED_END
+	}
+	SPMD_SENDIF;
+
 	print_active_lanes("active lanes: ");
 		
 	return succeeded;

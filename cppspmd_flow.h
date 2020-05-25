@@ -51,6 +51,31 @@ CPPSPMD_FORCE_INLINE void spmd_kernel::spmd_unmasked(const UnmaskedBody& unmaske
 	check_masks();
 }
 
+struct scoped_unmasked_restorer
+{
+	spmd_kernel *m_pKernel;
+	exec_mask m_orig_exec, m_orig_kernel_exec;
+				
+	CPPSPMD_FORCE_INLINE scoped_unmasked_restorer(spmd_kernel *pKernel) : 
+		m_pKernel(pKernel), 
+		m_orig_exec(pKernel->m_exec),
+		m_orig_kernel_exec(pKernel->m_kernel_exec)
+	{
+		pKernel->m_kernel_exec = exec_mask::all_on();
+		pKernel->m_exec = exec_mask::all_on();
+	}
+
+	CPPSPMD_FORCE_INLINE ~scoped_unmasked_restorer() 
+	{ 
+		m_pKernel->m_kernel_exec = m_pKernel->m_kernel_exec & m_orig_kernel_exec;
+		m_pKernel->m_exec = m_pKernel->m_exec & m_orig_exec;
+		m_pKernel->check_masks();
+	}
+};
+
+#define SPMD_UNMASKED_BEGIN { scoped_unmasked_restorer _unmasked_restorer(this); 
+#define SPMD_UNMASKED_END }
+
 template<typename SPMDKernel, typename... Args>
 CPPSPMD_FORCE_INLINE decltype(auto) spmd_kernel::spmd_call(Args&&... args)
 {
