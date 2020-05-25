@@ -1916,3 +1916,18 @@ mulhiu:
 0x7DFFFFFE 0x7DFFFFFE 0x7DFFFFFE 0x7DFFFFFE 
 0x40FFFFFE 0x40FFFFFE 0x40FFFFFE 0x40FFFFFE 
 0xAFFFFFF 0xAFFFFFF 0xAFFFFFF 0xAFFFFFF 
+SPMD_FOREACH_ACTIVE 1:
+index=0
+active lanes: 0 
+index=1
+active lanes: 1 
+index=2
+active lanes: 2 
+index=3
+active lanes: 3 
+SPMD_FOREACH_ACTIVE 2:
+SPMD_FOREACH_ACTIVE 3:
+index=1
+active lanes: 1 
+index=3
+active lanes: 3 

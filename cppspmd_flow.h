@@ -436,6 +436,15 @@ struct scoped_while_restorer
 
 #define SPMD_FOREACH_END(loop_var) m_exec = m_exec | m_continue_mask; if (!any(m_exec)) break; m_continue_mask = exec_mask::all_off(); check_masks(); store_all(loop_var, loop_var + PROGRAM_COUNT); } }
 
+// Okay to use spmd_continue or spmd_return, but not spmd_break
+#define SPMD_FOREACH_ACTIVE(index_var) int64_t index_var; { uint64_t _movemask = m_exec.get_movemask(); if (_movemask) { scoped_while_restorer CPPSPMD_GLUER2(_while_restore_, __LINE__)(this); \
+	for (uint32_t _i = 0; _i < PROGRAM_COUNT; ++_i) { \
+		if (_movemask & (1U << _i)) { \
+			m_exec.enable_lane(_i); m_exec = m_exec & m_kernel_exec; \
+			(index_var) = _i; \
+
+#define SPMD_FOREACH_ACTIVE_END } } } }
+
 struct scoped_simple_while_restorer
 {
 	spmd_kernel* m_pKernel;

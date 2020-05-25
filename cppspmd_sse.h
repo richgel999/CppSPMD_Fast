@@ -116,6 +116,14 @@ CPPSPMD_DECL(const uint32_t, g_x_128[4]) = { UINT32_MAX, 0, 0, 0 };
 CPPSPMD_DECL(const float, g_onef_128[4]) = { 1.0f, 1.0f, 1.0f, 1.0f };
 CPPSPMD_DECL(const uint32_t, g_oneu_128[4]) = { 1, 1, 1, 1 };
 
+CPPSPMD_DECL(const uint32_t, g_lane_masks_128[4][4]) = 
+{ 
+	{ UINT32_MAX, 0, 0, 0 },
+	{ 0, UINT32_MAX, 0, 0 },
+	{ 0, 0, UINT32_MAX, 0 },
+	{ 0, 0, 0, UINT32_MAX },
+};
+
 #if CPPSPMD_SSE41
 CPPSPMD_FORCE_INLINE __m128i _mm_blendv_epi32(__m128i a, __m128i b, __m128i c) { return _mm_castps_si128(_mm_blendv_ps(_mm_castsi128_ps(a), _mm_castsi128_ps(b), _mm_castsi128_ps(c))); }
 #endif
@@ -346,6 +354,8 @@ struct spmd_kernel
 
 		CPPSPMD_FORCE_INLINE explicit exec_mask(const vbool& b);
 		CPPSPMD_FORCE_INLINE explicit exec_mask(const __m128i& mask) : m_mask(mask) { }
+
+		CPPSPMD_FORCE_INLINE void enable_lane(uint32_t lane) { m_mask = _mm_load_si128((const __m128i *)&g_lane_masks_128[lane][0]); }
 				
 		static CPPSPMD_FORCE_INLINE exec_mask all_on()	{ return exec_mask{ _mm_load_si128((const __m128i*)g_allones_128) };	}
 		static CPPSPMD_FORCE_INLINE exec_mask all_off() { return exec_mask{ _mm_setzero_si128() }; }

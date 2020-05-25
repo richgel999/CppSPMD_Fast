@@ -912,6 +912,8 @@ struct spmd_kernel
 
 		CPPSPMD_FORCE_INLINE explicit exec_mask(const vbool& b);
 		CPPSPMD_FORCE_INLINE explicit exec_mask(const int4& mask) : m_mask(mask) { }
+
+		CPPSPMD_FORCE_INLINE void enable_lane(uint32_t lane) { memset(&m_mask, 0, sizeof(m_mask)); m_mask.c[lane] = UINT32_MAX; }
 				
 		static CPPSPMD_FORCE_INLINE exec_mask all_on()	{ return exec_mask{ set1_int4(UINT32_MAX) }; }
 		static CPPSPMD_FORCE_INLINE exec_mask all_off() { return exec_mask{ set1_int4(0) }; }

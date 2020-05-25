@@ -1612,7 +1612,39 @@ bool test_kernel::_call(FILE* p)
 	print_vint_hex(mulhiu(vint(0x4FFFFFFF), vint(0xCFFFFFFF)));
 	print_vint_hex(mulhiu(vint(0x0FFFFFFF), vint(0xAFFFFFFF)));
 #endif
-	
+
+	fprintf(pFile, "SPMD_FOREACH_ACTIVE 1:\n");
+	SPMD_FOREACH_ACTIVE(index)
+	{
+		fprintf(pFile, "index=%u\n", (int32_t)index);
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_ACTIVE_END;
+
+	fprintf(pFile, "SPMD_FOREACH_ACTIVE 2:\n");
+	SPMD_SIF(vint_t(program_index) >= 4)
+	{
+		SPMD_FOREACH_ACTIVE(index)
+		{
+			fprintf(pFile, "index=%u\n", (int32_t)index);
+			print_active_lanes("active lanes: ");
+		}
+		SPMD_FOREACH_ACTIVE_END;
+	}
+	SPMD_SENDIF;
+
+	fprintf(pFile, "SPMD_FOREACH_ACTIVE 3:\n");
+	SPMD_SIF(vint_t(program_index) == 3 || vint_t(program_index) == 1)
+	{
+		SPMD_FOREACH_ACTIVE(index)
+		{
+			fprintf(pFile, "index=%u\n", (int32_t)index);
+			print_active_lanes("active lanes: ");
+		}
+		SPMD_FOREACH_ACTIVE_END;
+	}
+	SPMD_SENDIF;
+		
 	return succeeded;
 }
 

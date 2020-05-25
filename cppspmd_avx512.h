@@ -140,6 +140,8 @@ struct spmd_kernel
 
 		CPPSPMD_FORCE_INLINE explicit exec_mask(const __m512i& mask) : m_mask( _mm512_cmpge_epu32_mask(mask, _mm512_loadu_epi32(g_bit7_512)) ) { }
 
+		CPPSPMD_FORCE_INLINE void enable_lane(uint32_t lane) { m_mask = (__mmask16)(1U << lane); }
+
 		static CPPSPMD_FORCE_INLINE exec_mask all_on() { return exec_mask{ _mm512_int2mask(ALL_ON_MOVEMASK) }; }
 		static CPPSPMD_FORCE_INLINE exec_mask all_off() { return exec_mask{ _mm512_int2mask(0) }; }
 
