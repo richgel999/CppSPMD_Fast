@@ -3534,3 +3534,46 @@ index=1
 active lanes: 1 
 index=3
 active lanes: 3 
+SPMD_FOREACH_UNIQUE_INT 1:
+index=0
+active lanes: 0 
+index=1
+active lanes: 1 
+index=2
+active lanes: 2 
+index=3
+active lanes: 3 
+index=4
+active lanes: 4 
+index=5
+active lanes: 5 
+index=6
+active lanes: 6 
+index=7
+active lanes: 7 
+index=8
+active lanes: 8 
+index=9
+active lanes: 9 
+index=10
+active lanes: 10 
+index=11
+active lanes: 11 
+index=12
+active lanes: 12 
+index=13
+active lanes: 13 
+index=14
+active lanes: 14 
+index=15
+active lanes: 15 
+SPMD_FOREACH_UNIQUE_INT 2:
+index=0
+active lanes: 8 9 10 11 12 13 14 15 
+index=1
+active lanes: 0 1 2 7 
+index=3
+active lanes: 3 
+index=4
+active lanes: 4 5 6 
+active lanes: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 

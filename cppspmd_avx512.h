@@ -18,6 +18,7 @@
 #include <math.h>
 #include <utility>
 #include <immintrin.h>
+#include <algorithm>
 
 #ifdef _MSC_VER
 #ifndef CPPSPMD_DECL
@@ -126,6 +127,7 @@ struct spmd_kernel
 	struct vbool;
 	struct vfloat;
 
+	typedef int int_t;
 	typedef vint vint_t;
 	typedef lint lint_t;
 

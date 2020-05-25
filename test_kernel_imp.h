@@ -1644,6 +1644,37 @@ bool test_kernel::_call(FILE* p)
 		SPMD_FOREACH_ACTIVE_END;
 	}
 	SPMD_SENDIF;
+
+	fprintf(pFile, "SPMD_FOREACH_UNIQUE_INT 1:\n");
+	SPMD_FOREACH_UNIQUE_INT(v, (vint_t)program_index)
+	{
+		fprintf(pFile, "index=%u\n", (int32_t)v);
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_UNIQUE_INT_END;
+
+	vint_t kz = 0;
+	insert(kz, 0, 1);
+	insert(kz, 1, 1);
+	insert(kz, 2, 1);
+	insert(kz, 3, 3);
+	if (PROGRAM_COUNT > 4)
+	{
+		insert(kz, 4, 4);
+		insert(kz, 5, 4);
+		insert(kz, 6, 4);
+		insert(kz, 7, 1);
+	}
+
+	fprintf(pFile, "SPMD_FOREACH_UNIQUE_INT 2:\n");
+	SPMD_FOREACH_UNIQUE_INT(v, kz)
+	{
+		fprintf(pFile, "index=%u\n", (int32_t)v);
+		print_active_lanes("active lanes: ");
+	}
+	SPMD_FOREACH_UNIQUE_INT_END;
+
+	print_active_lanes("active lanes: ");
 		
 	return succeeded;
 }

@@ -18,6 +18,7 @@
 #include <assert.h>
 #include <math.h>
 #include <utility>
+#include <algorithm>
 
 #if CPPSPMD_SSE2
 #include <xmmintrin.h>		// SSE
@@ -342,6 +343,7 @@ struct spmd_kernel
 	struct vbool;
 	struct vfloat;
 
+	typedef int int_t;
 	typedef vint vint_t;
 	typedef lint lint_t;
 		

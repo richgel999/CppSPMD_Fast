@@ -445,6 +445,14 @@ struct scoped_while_restorer
 
 #define SPMD_FOREACH_ACTIVE_END } } } }
 
+// Okay to use spmd_continue, but not spmd_break/spmd_continue
+#define SPMD_FOREACH_UNIQUE_INT(index_var, var) { scoped_while_restorer CPPSPMD_GLUER2(_while_restore_, __LINE__)(this); \
+	CPPSPMD_DECL(int_t, _vals[PROGRAM_COUNT]); store_linear_all(_vals, var); std::sort(_vals, _vals + PROGRAM_COUNT); \
+	const int _n = (int)(std::unique(_vals, _vals + PROGRAM_COUNT) - _vals); \
+	for (int _i = 0; _i < _n; ++_i) { int index_var = _vals[_i]; vbool cond = (vint_t(var) == vint_t(index_var)); m_exec = exec_mask(cond);
+
+#define SPMD_FOREACH_UNIQUE_INT_END } }
+
 struct scoped_simple_while_restorer
 {
 	spmd_kernel* m_pKernel;

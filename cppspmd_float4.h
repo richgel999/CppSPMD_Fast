@@ -898,6 +898,7 @@ struct spmd_kernel
 	struct vbool;
 	struct vfloat;
 
+	typedef int int_t;
 	typedef vint vint_t;
 	typedef lint lint_t;
 		

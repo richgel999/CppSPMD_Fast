@@ -1931,3 +1931,18 @@ index=1
 active lanes: 1 
 index=3
 active lanes: 3 
+SPMD_FOREACH_UNIQUE_INT 1:
+index=0
+active lanes: 0 
+index=1
+active lanes: 1 
+index=2
+active lanes: 2 
+index=3
+active lanes: 3 
+SPMD_FOREACH_UNIQUE_INT 2:
+index=1
+active lanes: 0 1 2 
+index=3
+active lanes: 3 
+active lanes: 0 1 2 3 

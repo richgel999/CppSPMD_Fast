@@ -18,6 +18,7 @@
 #include <math.h>
 #include <utility>
 #include <immintrin.h>
+#include <algorithm>
 
 // By default this header is for AVX2, but I've left the older AVX1 code in place for benchmarking purposes.
 #ifndef CPPSPMD_USE_AVX2
@@ -283,6 +284,7 @@ struct spmd_kernel
 	struct vbool;
 	struct vfloat;
 
+	typedef int int_t;
 	typedef vint vint_t;
 	typedef lint lint_t;
 		
