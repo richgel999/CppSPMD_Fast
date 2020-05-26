@@ -1266,15 +1266,16 @@ struct spmd_kernel
 	{ 
 		__m128 k3210 = _mm_castsi128_ps(blendv_mask_epi32(_mm_setzero_si128(), _mm_castps_si128(v.m_value), m_exec.m_mask));
 
-#if CPPSPMD_SSE2
-		__m128 k3311 = _mm_shuffle_ps(k3210, k3210, _MM_SHUFFLE(3, 3, 1, 1));
-		__m128 a = _mm_add_ps(k3311, k3210);
-
-		__m128 b = _mm_shuffle_ps(a, a, _MM_SHUFFLE(2, 2, 2, 2));
-		__m128 c = _mm_add_ps(a, b);
-		
-		return extractf_ps_x(c);
+//#if CPPSPMD_SSE2
+#if 1
+		// See https://stackoverflow.com/questions/6996764/fastest-way-to-do-horizontal-sse-vector-sum-or-other-reduction/35270026#35270026
+		__m128 shuf   = _mm_shuffle_ps(k3210, k3210, _MM_SHUFFLE(2, 3, 0, 1));
+		__m128 sums   = _mm_add_ps(k3210, shuf);
+		shuf          = _mm_movehl_ps(shuf, sums);
+		sums          = _mm_add_ss(sums, shuf);
+		return _mm_cvtss_f32(sums);
 #else
+		// This is pretty slow.
 		__m128 a = _mm_hadd_ps(k3210, k3210);
 		__m128 b = _mm_hadd_ps(a, a);
 		return extractf_ps_x(b);
