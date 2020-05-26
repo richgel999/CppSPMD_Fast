@@ -506,6 +506,13 @@ bool test()
 	fclose(pFile);
 	printf("Wrote file avx2_fma.txt\n");
 
+	pFile = fopen("int16_avx2_fma.txt", "w");
+	if (!pFile) return false;
+	fprintf(pFile, "int16_avx2_fma:\n");
+	cppspmd_lowlevel_test_int16_avx2_fma(pFile);
+	fclose(pFile);
+	printf("Wrote file int16_avx2_fma.txt\n");
+
 	pFile = fopen("avx512.txt", "w");
 	if (!pFile) return false;
 	fprintf(pFile, "avx512:\n");

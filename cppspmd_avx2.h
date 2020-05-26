@@ -1512,6 +1512,20 @@ struct spmd_kernel
 	template<typename SPMDKernel, typename... Args>
 	CPPSPMD_FORCE_INLINE decltype(auto) spmd_call(Args&&... args);
 
+	CPPSPMD_FORCE_INLINE float reduce_add(vfloat v)	
+	{ 
+		__m256 k = _mm256_blendv_ps(_mm256_setzero_ps(), v.m_value, _mm256_castsi256_ps(m_exec.m_mask));
+
+		__m256 a = _mm256_hadd_ps(k, k);
+		__m256 b = _mm256_hadd_ps(a, a);
+		
+		__m128 c = _mm_add_ps(get_lo(b), get_hi(b));
+		
+		float d;
+		_MM_EXTRACT_FLOAT(d, c, 0);
+		return d;
+	}
+
 	CPPSPMD_FORCE_INLINE void swap(vint &a, vint &b) { vint temp = a; store(a, b); store(b, temp); }
 	CPPSPMD_FORCE_INLINE void swap(vfloat &a, vfloat &b) { vfloat temp = a; store(a, b); store(b, temp); }
 	CPPSPMD_FORCE_INLINE void swap(vbool &a, vbool &b) { vbool temp = a; store(a, b); store(b, temp); }

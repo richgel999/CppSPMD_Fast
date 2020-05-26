@@ -1591,6 +1591,8 @@ struct spmd_kernel
 	CPPSPMD_FORCE_INLINE void swap(vfloat &a, vfloat &b) { vfloat temp = a; store(a, b); store(b, temp); }
 	CPPSPMD_FORCE_INLINE void swap(vbool &a, vbool &b) { vbool temp = a; store(a, b); store(b, temp); }
 
+	CPPSPMD_FORCE_INLINE float reduce_add(vfloat v)	{ float4 k = blend_float4(vfloat(0.0f).m_value, v.m_value, m_exec.m_mask); return k.c[0] + k.c[1] + k.c[2] + k.c[3]; }
+
 	#include "cppspmd_math_declares.h"
 
 }; // struct spmd_kernel

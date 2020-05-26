@@ -1687,6 +1687,23 @@ bool test_kernel::_call(FILE* p)
 	}
 	SPMD_SENDIF;
 
+	fprintf(pFile, "Reduce add:\n");
+	print_vfloat(fa);
+	print_vfloat(fb);
+	
+	fprintf(pFile, "Reduce add 1: %f\n", reduce_add(fa));
+	fprintf(pFile, "Reduce add 2: %f\n", reduce_add(fb));
+
+	for (int i = 0; i < 16; i++)
+	{
+		SPMD_SIF((vint_t)program_index == i)
+		{
+			fprintf(pFile, "Reduce add: %f\n", reduce_add(fa));
+			fprintf(pFile, "Reduce add: %f\n", reduce_add(fb));
+		}
+		SPMD_SENDIF;
+	}
+
 	print_active_lanes("active lanes: ");
 		
 	return succeeded;

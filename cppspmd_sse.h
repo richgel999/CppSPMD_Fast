@@ -1262,6 +1262,25 @@ struct spmd_kernel
 	CPPSPMD_FORCE_INLINE void swap(vfloat &a, vfloat &b) { vfloat temp = a; store(a, b); store(b, temp); }
 	CPPSPMD_FORCE_INLINE void swap(vbool &a, vbool &b) { vbool temp = a; store(a, b); store(b, temp); }
 
+	CPPSPMD_FORCE_INLINE float reduce_add(vfloat v)	
+	{ 
+		__m128 k3210 = _mm_castsi128_ps(blendv_mask_epi32(_mm_setzero_si128(), _mm_castps_si128(v.m_value), m_exec.m_mask));
+
+#if CPPSPMD_SSE2
+		__m128 k3311 = _mm_shuffle_ps(k3210, k3210, _MM_SHUFFLE(3, 3, 1, 1));
+		__m128 a = _mm_add_ps(k3311, k3210);
+
+		__m128 b = _mm_shuffle_ps(a, a, _MM_SHUFFLE(2, 2, 2, 2));
+		__m128 c = _mm_add_ps(a, b);
+		
+		return extractf_ps_x(c);
+#else
+		__m128 a = _mm_hadd_ps(k3210, k3210);
+		__m128 b = _mm_hadd_ps(a, a);
+		return extractf_ps_x(b);
+#endif
+	}
+
 	#include "cppspmd_math_declares.h"
 
 }; // struct spmd_kernel
