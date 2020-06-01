@@ -54,7 +54,7 @@ It purposely uses the lambda-based flow control implementation of "spmd_foreach"
 
 This example uses "SPMD_SIF", which is a "simple" SPMD varying conditional if statement that doesn't support spmd_break/spmd_continue/spmd_return inside the if or else blocks (for slightly better performance). 
 
-```
+``` cpp
 using namespace CPPSPMD;
 
 // Must use unique struct/class names, or put them into uniquely named namespaces, otherwise the linker will get confused between the different variants. (At least with MSVC.)
@@ -110,7 +110,7 @@ The original lambda-based control flow is still available, but in many cases res
 
 "Simple" SPMD if or if/else statement:
 
-```
+``` cpp
 // Simpler/faster spmd_if's for when you know the SPMD control flow won't diverge inside the conditional
 // DO NOT use spmd_break(), spmd_continue(), spmd_return(), inside SPMD_SIMPLE_IF's. Nesting SPMD_SIMPLE_IF()'s is OK.
 SPMD_SIF(cond)
@@ -125,7 +125,7 @@ SPMD_SENDIF
 
 SPMD if or if/else statement:
 
-```
+``` cpp
 // OK to use spmd_break(), spmd_continue(), spmd_return(), SPMD_WHILE, SPMD_SIMPLE_IF, inside SPMD_IF's.
 SPMD_IF(cond)
 {
@@ -138,7 +138,7 @@ SPMD_END_IF
 
 SPMD while loop:
 
-```
+``` cpp
 // OK to use spmd_break(), spmd_continue(), spmd_return() inside while loop. OK to use SPMD_IF/SPMD_SIMPLE_IF inside while loop too.
 SPMD_WHILE(cond)
 {
