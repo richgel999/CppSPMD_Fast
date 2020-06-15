@@ -1515,6 +1515,9 @@ CPPSPMD_FORCE_INLINE vfloat vfnms(const vfloat& a, const vfloat& b, const vfloat
 	return vfloat{ _mm_sub_ps(_mm_sub_ps(_mm_xor_ps(a.m_value, a.m_value), _mm_mul_ps(a.m_value, b.m_value)), c.m_value) };
 }
 
+// control is an 8-bit immediate value containing 4 2-bit indices which shuffles the floats in each 128-bit lane.
+#define VFLOAT_LANE_SHUFFLE_PS(a, control) vfloat(_mm_shuffle_ps((a).m_value, (a).m_value, control))
+
 CPPSPMD_FORCE_INLINE vfloat lerp(const vfloat &x, const vfloat &y, const vfloat &s) { return vfma(y - x, s, x); }
 
 CPPSPMD_FORCE_INLINE lint operator+(int a, const lint& b) { return lint{ _mm_add_epi32(_mm_set1_epi32(a), b.m_value) }; }

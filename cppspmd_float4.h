@@ -380,6 +380,17 @@ CPPSPMD_FORCE_INLINE int movemask_epi8(const int4& a)
 	return mask;
 }
 
+CPPSPMD_FORCE_INLINE int4 lane_shuffle_ps_float4(const float4& a, int control)
+{
+	assert(control >= 0 && control < 256);
+	float4 result;
+	result.c[0] = a.c[control & 3];
+	result.c[1] = a.c[(control >> 2) & 3];
+	result.c[2] = a.c[(control >> 4) & 3];
+	result.c[3] = a.c[(control >> 6) & 3];
+	return result;
+}
+
 CPPSPMD_FORCE_INLINE int4 lane_shuffle_epi32_int4(const int4& a, int control)
 {
 	assert(control >= 0 && control < 256);
@@ -1739,6 +1750,9 @@ CPPSPMD_FORCE_INLINE vfloat vfnms(const vfloat& a, const vfloat& b, const vfloat
 {
 return vfloat{ fnms_float4(a.m_value, b.m_value, c.m_value) };
 }
+
+// control is an 8-bit immediate value containing 4 2-bit indices which shuffles the floats in each 128-bit lane.
+#define VFLOAT_LANE_SHUFFLE_PS(a, control) vfloat(lane_shuffle_ps_float4((a).m_value, control))
 
 CPPSPMD_FORCE_INLINE vfloat lerp(const vfloat &x, const vfloat &y, const vfloat &s) { return vfma(y - x, s, x); }
 
