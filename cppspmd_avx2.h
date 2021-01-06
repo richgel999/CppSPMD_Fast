@@ -755,6 +755,26 @@ struct spmd_kernel
 		vint& operator=(const vint&);
 	};
 
+	CPPSPMD_FORCE_INLINE vfloat floatbits(const int src)
+	{
+		return vfloat{ _mm256_castsi256_ps(_mm256_set1_epi32(src)) };
+	}
+
+	CPPSPMD_FORCE_INLINE vfloat floatbits(const vint& src)
+	{
+		return vfloat{ _mm256_castsi256_ps(src.m_value) };
+	}
+
+	CPPSPMD_FORCE_INLINE vint intbits(const float src)
+	{
+		return vint{ _mm256_castps_si256(_mm256_set1_ps(src)) };
+	}
+
+	CPPSPMD_FORCE_INLINE vint intbits(const vfloat& src)
+	{
+		return vint{ _mm256_castps_si256(src.m_value) };
+	}
+
 	// Load/store linear integer
 	CPPSPMD_FORCE_INLINE void storeu_linear(int *pDst, const vint& src)
 	{
@@ -1324,6 +1344,72 @@ struct spmd_kernel
 		return vfloat{ _mm256_castsi256_ps(v) };
 	}
 
+	CPPSPMD_FORCE_INLINE vfloat load4_all_strided(const float* pSrc, uint32_t stride)
+	{
+		__m256 v;
+
+		v = _mm256_castps128_ps256(_mm_loadu_ps(pSrc));
+		v = _mm256_insertf128_ps(v, _mm_loadu_ps(&pSrc[stride]), 1);
+
+		return vfloat{ (v) };
+	}
+
+	CPPSPMD_FORCE_INLINE void store4_all_strided(float* pDst, uint32_t stride, const vfloat& v)
+	{
+		_mm_storeu_ps(pDst, _mm256_extractf128_ps(v.m_value, 0));
+		_mm_storeu_ps(&pDst[stride], _mm256_extractf128_ps(v.m_value, 1));
+	}
+
+	CPPSPMD_FORCE_INLINE vfloat load4(const float* pSrc)
+	{
+		__m256 v;
+
+		v = _mm256_castps128_ps256(_mm_loadu_ps(pSrc));
+
+		return vfloat{ (v) };
+	}
+
+	CPPSPMD_FORCE_INLINE void store4(float* pDst, const vfloat& v)
+	{
+		_mm_storeu_ps(pDst, _mm256_extractf128_ps(v.m_value, 0));
+	}
+
+	CPPSPMD_FORCE_INLINE vfloat load3(const float* pSrc)
+	{
+		__m256i v;
+
+		const int* pSrcI = (const int*)pSrc;
+
+		v = _mm256_castps128_ps256(_mm_load_ss(&pSrc[0]));
+		v = _mm256_insert_epi32(v, pSrcI[1], 1);
+		v = _mm256_insert_epi32(v, pSrcI[2], 2);
+
+		return vfloat{ _mm256_castsi256_ps(v) };
+	}
+
+	CPPSPMD_FORCE_INLINE vfloat load3withzero(const float* pSrc)
+	{
+		__m256i v;
+
+		const int* pSrcI = (const int*)pSrc;
+
+		v = _mm256_castps128_ps256(_mm_load_ss(&pSrc[0]));
+		v = _mm256_insert_epi32(v, pSrcI[1], 1);
+		v = _mm256_insert_epi32(v, pSrcI[2], 2);
+		v = _mm256_insert_epi32(v, 0, 3);
+
+		return vfloat{ _mm256_castsi256_ps(v) };
+	}
+
+	CPPSPMD_FORCE_INLINE void store3(float* pDst, const vfloat& v)
+	{
+		int* pDstI = (int*)pDst;
+
+		pDstI[0] = _mm256_extract_epi32(_mm256_castps_si256(v.m_value), 0);
+		pDstI[1] = _mm256_extract_epi32(_mm256_castps_si256(v.m_value), 1);
+		pDstI[2] = _mm256_extract_epi32(_mm256_castps_si256(v.m_value), 2);
+	}
+
 	CPPSPMD_FORCE_INLINE const vfloat_vref& store(const vfloat_vref& dst, const vfloat& src)
 	{
 		// TODO: There's surely a better way
@@ -1650,10 +1736,15 @@ CPPSPMD_FORCE_INLINE vbool operator<=(const vfloat& a, float b) { return a <= vf
 CPPSPMD_FORCE_INLINE vbool operator>=(const vfloat& a, const vfloat& b) { return vbool{ _mm256_castps_si256(_mm256_cmp_ps(a.m_value, b.m_value, _CMP_GE_OQ)) }; }
 CPPSPMD_FORCE_INLINE vbool operator>=(const vfloat& a, float b) { return a >= vfloat(b); }
 
+CPPSPMD_FORCE_INLINE vfloat operator^(const vfloat& a, const vfloat& b) { return vfloat{ _mm256_castsi256_ps(xor_si256(_mm256_castps_si256(a.m_value), _mm256_castps_si256(b.m_value))) }; }
+CPPSPMD_FORCE_INLINE vfloat operator&(const vfloat& a, const vfloat& b) { return vfloat{ _mm256_castsi256_ps(and_si256(_mm256_castps_si256(a.m_value), _mm256_castps_si256(b.m_value))) }; }
+CPPSPMD_FORCE_INLINE vfloat operator|(const vfloat& a, const vfloat& b) { return vfloat{ _mm256_castsi256_ps(or_si256(_mm256_castps_si256(a.m_value), _mm256_castps_si256(b.m_value))) }; }
+
 CPPSPMD_FORCE_INLINE vfloat spmd_ternaryf(const vbool& cond, const vfloat& a, const vfloat& b) { return vfloat{ _mm256_blendv_ps(b.m_value, a.m_value, _mm256_castsi256_ps(cond.m_value)) }; }
 CPPSPMD_FORCE_INLINE vint spmd_ternaryi(const vbool& cond, const vint& a, const vint& b) { return vint{ _mm256_castps_si256(_mm256_blendv_ps(_mm256_castsi256_ps(b.m_value), _mm256_castsi256_ps(a.m_value), _mm256_castsi256_ps(cond.m_value))) }; }
 
 CPPSPMD_FORCE_INLINE vfloat sqrt(const vfloat& v) { return vfloat{ _mm256_sqrt_ps(v.m_value) }; }
+CPPSPMD_FORCE_INLINE vfloat rsqrt_fast(const vfloat& v) { return vfloat{ _mm256_rsqrt_ps(v.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat abs(const vfloat& v) { return vfloat{ _mm256_andnot_ps(_mm256_set1_ps(-0.0f), v.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat max(const vfloat& a, const vfloat& b) { return vfloat{ _mm256_max_ps(a.m_value, b.m_value) }; }
 CPPSPMD_FORCE_INLINE vfloat min(const vfloat& a, const vfloat& b) {	return vfloat{ _mm256_min_ps(a.m_value, b.m_value) }; }
@@ -1778,6 +1869,9 @@ CPPSPMD_FORCE_INLINE vfloat vfnms(const vfloat& a, const vfloat& b, const vfloat
 	return vfloat{ _mm256_sub_ps(_mm256_sub_ps(_mm256_xor_ps(a.m_value, a.m_value), _mm256_mul_ps(a.m_value, b.m_value)), c.m_value) };
 #endif
 }
+
+// control is an 8-bit immediate value containing 4 2-bit indices which shuffles the floats in each 128-bit lane.
+#define VFLOAT_LANE_SHUFFLE_PS(a, control) vfloat(_mm256_permute_ps((a).m_value, control))
 
 CPPSPMD_FORCE_INLINE vfloat lerp(const vfloat &x, const vfloat &y, const vfloat &s) { return vfma(y - x, s, x); }
 
